@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,11 +53,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +75,8 @@ import com.nextube.app.data.MediaSaver
 import com.nextube.app.ui.MainViewModel
 import com.nextube.app.ui.PlayerActivity
 import com.nextube.app.ui.components.EmptyState
+import com.nextube.app.ui.components.SupportDialog
+import com.nextube.app.ui.components.SupportSlimBanner
 import com.nextube.app.ui.components.Thumbnail
 import com.nextube.app.util.Fmt
 
@@ -81,57 +85,87 @@ import com.nextube.app.util.Fmt
 fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val saveFolderLabel by AppSettings.saveFolderLabel.collectAsStateWithLifecycle()
+    val bannerDismissed by AppSettings.supportBannerDismissed.collectAsStateWithLifecycle()
     val active = tasks.filter { it.status != DownloadStatus.COMPLETED }
     val done = tasks.filter { it.status == DownloadStatus.COMPLETED }
-    var tab by rememberSaveable { mutableIntStateOf(if (active.any { it.status.isActive }) 0 else 1) }
+    val pagerState = rememberPagerState(initialPage = if (active.any { it.status.isActive }) 0 else 1) { 2 }
+    val scope = rememberCoroutineScope()
     var toDelete by remember { mutableStateOf<DownloadTask?>(null) }
+    var showSupport by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Downloads", fontWeight = FontWeight.Bold) },
             actions = {
-                if (tab == 0 && active.any { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
+                if (pagerState.currentPage == 0 && active.any { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
                     IconButton(onClick = vm::clearFinished) { Icon(Icons.Rounded.DeleteSweep, "Clear failed") }
                 }
             },
         )
-        PrimaryTabRow(selectedTabIndex = tab) {
-            Tab(tab == 0, onClick = { tab = 0 }, text = { Text("In progress (${active.size})") })
-            Tab(tab == 1, onClick = { tab = 1 }, text = { Text("Completed (${done.size})") })
+        PrimaryTabRow(selectedTabIndex = pagerState.currentPage) {
+            Tab(
+                selected = pagerState.currentPage == 0,
+                onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                text = { Text("In progress (${active.size})") },
+            )
+            Tab(
+                selected = pagerState.currentPage == 1,
+                onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                text = { Text("Completed (${done.size})") },
+            )
         }
-        val list = if (tab == 0) active else done
-        if (list.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                if (tab == 0) EmptyState(Icons.Rounded.Downloading, "Nothing downloading", "Find a video on Home or share a link to NexTube.") {
-                    FilledTonalButton(onClick = onBrowse) { Text("Browse videos") }
-                } else EmptyState(
-                    Icons.Rounded.DownloadDone,
-                    "No downloads yet",
-                    "Finished files are saved to ${saveFolderLabel ?: "Download/${MediaSaver.FOLDER}"}.",
-                )
-            }
-        } else {
-            LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-                items(list, key = { it.id }) { t ->
-                    if (tab == 0) ActiveRow(
-                        t,
-                        onPause = { vm.pause(t) },
-                        onResume = { vm.resume(t) },
-                        onCancel = { vm.cancel(t) },
-                        onRetry = { vm.retry(t) },
-                        onRemove = { vm.delete(t, false) },
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 1,
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
+            val list = if (page == 0) active else done
+            if (list.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (page == 0) EmptyState(Icons.Rounded.Downloading, "Nothing downloading", "Find a video on Home or share a link to NexTube.") {
+                        FilledTonalButton(onClick = onBrowse) { Text("Browse videos") }
+                    } else EmptyState(
+                        Icons.Rounded.DownloadDone,
+                        "No downloads yet",
+                        "Finished files are saved to ${saveFolderLabel ?: "Download/${MediaSaver.FOLDER}"}.",
                     )
-                    else DoneRow(
-                        t,
-                        onPlay = { PlayerActivity.start(context, t.id) },
-                        onOpenExternal = { open(context, t) },
-                        onShare = { share(context, t) },
-                        onDelete = { toDelete = t },
-                    )
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    if (page == 1 && done.size >= 5 && !bannerDismissed) {
+                        item(key = "support_banner") {
+                            SupportSlimBanner(
+                                onSupport = { showSupport = true },
+                                onDismiss = AppSettings::dismissSupportBanner,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                    items(list, key = { it.id }) { t ->
+                        if (page == 0) ActiveRow(
+                            t,
+                            onPause = { vm.pause(t) },
+                            onResume = { vm.resume(t) },
+                            onCancel = { vm.cancel(t) },
+                            onRetry = { vm.retry(t) },
+                            onRemove = { vm.delete(t, false) },
+                        )
+                        else DoneRow(
+                            t,
+                            onPlay = { PlayerActivity.start(context, t.id) },
+                            onOpenExternal = { open(context, t) },
+                            onShare = { share(context, t) },
+                            onDelete = { toDelete = t },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (showSupport) {
+        SupportDialog(onDismiss = { showSupport = false })
     }
 
     toDelete?.let { t ->

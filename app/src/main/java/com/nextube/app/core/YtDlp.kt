@@ -123,10 +123,15 @@ object YtDlp {
         if (s is EngineState.Failed) throw IllegalStateException(s.message)
     }
 
-    suspend fun search(query: String, limit: Int = 25): List<SearchItem> = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, limit: Int = 20, offset: Int = 0): List<SearchItem> = withContext(Dispatchers.IO) {
         awaitReady()
-        val req = YoutubeDLRequest("ytsearch$limit:$query")
+        if (updateMutex.isLocked) updateMutex.withLock { }
+        val start = offset + 1
+        val end = offset + limit
+        val req = YoutubeDLRequest("ytsearch$end:$query")
             .addOption("--flat-playlist")
+            .addOption("--playlist-start", start)
+            .addOption("--playlist-end", end)
             .addOption("-J")
             .addOption("--no-warnings")
             .withCache()

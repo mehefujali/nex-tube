@@ -28,6 +28,12 @@ object AppSettings {
     private val _saveFolderLabel = MutableStateFlow<String?>(null)
     val saveFolderLabel: StateFlow<String?> = _saveFolderLabel.asStateFlow()
 
+    private val _supportBannerDismissed = MutableStateFlow(false)
+    val supportBannerDismissed: StateFlow<Boolean> = _supportBannerDismissed.asStateFlow()
+
+    private val _showSponsors = MutableStateFlow(true)
+    val showSponsors: StateFlow<Boolean> = _showSponsors.asStateFlow()
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         _theme.value = runCatching { ThemeMode.valueOf(prefs.getString("theme", null)!!) }.getOrDefault(ThemeMode.SYSTEM)
@@ -35,6 +41,18 @@ object AppSettings {
         _autoUpdate.value = prefs.getBoolean("auto_update", true)
         _saveFolderUri.value = prefs.getString("save_folder_uri", null)?.takeIf { it.isNotBlank() }
         _saveFolderLabel.value = prefs.getString("save_folder_label", null)?.takeIf { it.isNotBlank() }
+        _supportBannerDismissed.value = prefs.getBoolean("support_banner_dismissed", false)
+        _showSponsors.value = prefs.getBoolean("show_sponsors", true)
+    }
+
+    fun setShowSponsors(on: Boolean) {
+        _showSponsors.value = on
+        prefs.edit().putBoolean("show_sponsors", on).apply()
+    }
+
+    fun dismissSupportBanner() {
+        _supportBannerDismissed.value = true
+        prefs.edit().putBoolean("support_banner_dismissed", true).apply()
     }
 
     fun setTheme(mode: ThemeMode) { _theme.value = mode; prefs.edit().putString("theme", mode.name).apply() }

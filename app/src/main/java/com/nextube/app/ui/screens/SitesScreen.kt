@@ -68,6 +68,8 @@ import com.nextube.app.core.CookieStore
 import com.nextube.app.ui.MainViewModel
 import com.nextube.app.ui.components.InstagramLoginDialog
 import com.nextube.app.ui.components.PlatformLogo
+import com.nextube.app.ui.components.SupportDialog
+import com.nextube.app.ui.components.SupportHeroCard
 import com.nextube.app.util.Fmt
 
 private data class SupportedSite(
@@ -100,6 +102,7 @@ fun SitesScreen(vm: MainViewModel) {
     var dismissedClip by rememberSaveable { mutableStateOf<String?>(null) }
     val igConnected by CookieStore.hasInstagram.collectAsStateWithLifecycle()
     var showIgLogin by rememberSaveable { mutableStateOf(false) }
+    var showSupport by remember { mutableStateOf(false) }
 
     val focused = LocalWindowInfo.current.isWindowFocused
     var clipboardLink by remember { mutableStateOf<String?>(null) }
@@ -342,6 +345,11 @@ fun SitesScreen(vm: MainViewModel) {
                     }
                 }
             }
+            Spacer(Modifier.height(12.dp))
+            SupportHeroCard(
+                onSupport = { showSupport = true },
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         }
     }
 
@@ -350,6 +358,10 @@ fun SitesScreen(vm: MainViewModel) {
             onSuccess = { showIgLogin = false },
             onDismiss = { showIgLogin = false },
         )
+    }
+
+    if (showSupport) {
+        SupportDialog(onDismiss = { showSupport = false })
     }
 }
 

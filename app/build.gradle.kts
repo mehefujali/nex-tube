@@ -22,6 +22,11 @@ android {
         val updateUrl = (project.findProperty("updateUrl") as String?)
             ?: "https://raw.githubusercontent.com/mehefujali/nex-tube/main/update.json"
         buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
+
+        // First-party serverless sponsor feed (zero tracking, editable remotely from GitHub).
+        val sponsorsUrl = (project.findProperty("sponsorsUrl") as String?)
+            ?: "https://raw.githubusercontent.com/mehefujali/nex-tube/main/sponsors.json"
+        buildConfigField("String", "SPONSORS_URL", "\"$sponsorsUrl\"")
     }
 
     // One APK per CPU type keeps each download small; the universal APK runs everywhere.

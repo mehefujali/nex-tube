@@ -1,7 +1,9 @@
 package com.nextube.app.ui.screens
 
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,11 +24,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
@@ -43,6 +47,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -54,6 +59,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,8 +73,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nextube.app.core.EngineState
+import com.nextube.app.core.SponsorItem
+import com.nextube.app.data.AppSettings
 import com.nextube.app.data.SearchItem
 import com.nextube.app.ui.FeedState
 import com.nextube.app.ui.MainViewModel
@@ -84,10 +95,28 @@ fun HomeScreen(vm: MainViewModel) {
     val feed by vm.feed.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val selected by vm.selectedCategory.collectAsStateWithLifecycle()
+    val sponsor by vm.sponsor.collectAsStateWithLifecycle()
+    val showSponsors by AppSettings.showSponsors.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
+    val context = LocalContext.current
     val clipboardLink = rememberClipboardLink()
     var dismissedLink by rememberSaveable { mutableStateOf<String?>(null) }
+    var dismissedSponsorId by rememberSaveable { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+
+    // Prefetch the next page smoothly when the user is within 5 items of the bottom.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total > 4 && last >= total - 5
+        }
+            .distinctUntilChanged()
+            .filter { it }
+            .collect { vm.loadMore() }
+    }
 
     fun submit(text: String) {
         focus.clearFocus()
@@ -100,7 +129,8 @@ fun HomeScreen(vm: MainViewModel) {
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
-            Modifier.fillMaxSize(),
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
         item {
@@ -152,11 +182,46 @@ fun HomeScreen(vm: MainViewModel) {
                 }
             }
             is FeedState.Results -> {
-                if (f.items.isEmpty()) item {
+                val activeSponsor = sponsor?.takeIf { showSponsors && it.id != dismissedSponsorId }
+                if (activeSponsor != null && f.items.isNotEmpty()) {
+                    item(key = "sponsor_${activeSponsor.id}", contentType = "sponsor") {
+                        SponsorFeedCard(
+                            sponsor = activeSponsor,
+                            onClick = {
+                                try {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, activeSponsor.url.toUri())
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                } catch (_: ActivityNotFoundException) {
+                                }
+                            },
+                            onDismiss = { dismissedSponsorId = activeSponsor.id },
+                        )
+                    }
+                }
+                if (f.items.isEmpty()) item(contentType = "empty") {
                     EmptyState(Icons.Rounded.Search, "No results", "Try different words or paste a video link.")
                 }
-                items(f.items, key = { it.id }) { item ->
+                items(f.items, key = { it.id }, contentType = { "video" }) { item ->
                     VideoCard(item, onClick = { vm.openDetails(item.url, item) })
+                }
+                if (f.loadingMore) {
+                    item(key = "loading_more", contentType = "loader") {
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Loading more videos…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -231,6 +296,111 @@ private fun ClipboardCard(link: String, onDownload: () -> Unit, onDismiss: () ->
             }
             FilledTonalButton(onClick = onDownload) { Text("Download") }
             IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Dismiss", tint = Color.White) }
+        }
+    }
+}
+
+@Composable
+private fun SponsorFeedCard(sponsor: SponsorItem, onClick: () -> Unit, onDismiss: () -> Unit) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column {
+            if (sponsor.imageUrl.isNotBlank()) {
+                Thumbnail(
+                    url = sponsor.imageUrl,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color.Black.copy(alpha = 0.72f),
+                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                    ) {
+                        Text(
+                            sponsor.badge,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                    ) {
+                        Icon(Icons.Rounded.Close, "Hide", tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    if (sponsor.imageUrl.isBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                            ) {
+                                Text(
+                                    sponsor.badge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+                    Text(
+                        sponsor.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (sponsor.subtitle.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            sponsor.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                FilledTonalButton(onClick = onClick) {
+                    Text(sponsor.cta)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(14.dp))
+                }
+                if (sponsor.imageUrl.isBlank()) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Rounded.Close,
+                            "Hide",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

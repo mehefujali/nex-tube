@@ -1,9 +1,5 @@
 package com.nextube.app.ui.screens
 
-import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
@@ -19,15 +15,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NewReleases
@@ -35,8 +26,6 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Update
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -44,14 +33,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,15 +49,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nextube.app.BuildConfig
-import com.nextube.app.ui.UpdateState
 import com.nextube.app.core.EngineState
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.MediaSaver
 import com.nextube.app.data.ThemeMode
 import com.nextube.app.ui.MainViewModel
+import com.nextube.app.ui.UpdateState
+import com.nextube.app.ui.components.SupportDialog
+import com.nextube.app.ui.components.SupportHeroCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +67,7 @@ fun SettingsScreen(vm: MainViewModel) {
     val maxConcurrent by AppSettings.maxConcurrent.collectAsStateWithLifecycle()
     val autoUpdate by AppSettings.autoUpdate.collectAsStateWithLifecycle()
     val saveFolderLabel by AppSettings.saveFolderLabel.collectAsStateWithLifecycle()
+    val showSponsors by AppSettings.showSponsors.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val updating by vm.updating.collectAsStateWithLifecycle()
     val engineMessage by vm.engineMessage.collectAsStateWithLifecycle()
@@ -105,6 +93,11 @@ fun SettingsScreen(vm: MainViewModel) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Settings", fontWeight = FontWeight.Bold) })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+
+            SupportHeroCard(
+                onSupport = { showSupport = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
             Section("Downloads")
             ListItem(
@@ -166,6 +159,20 @@ fun SettingsScreen(vm: MainViewModel) {
                 },
                 leadingContent = { Icon(Icons.Rounded.Palette, null) },
             )
+            ListItem(
+                headlineContent = { Text("Show sponsor cards") },
+                supportingContent = { Text("Privacy-friendly, no tracking. Helps keep NexTube free.") },
+                leadingContent = { Icon(Icons.Rounded.NewReleases, null) },
+                trailingContent = {
+                    Switch(
+                        checked = showSponsors,
+                        onCheckedChange = {
+                            AppSettings.setShowSponsors(it)
+                            vm.refreshSponsor()
+                        },
+                    )
+                },
+            )
 
             Section("Download engine (yt-dlp)")
             ListItem(
@@ -218,17 +225,6 @@ fun SettingsScreen(vm: MainViewModel) {
                 },
             )
 
-            Section("Support")
-            ListItem(
-                modifier = Modifier.clickable { showSupport = true },
-                headlineContent = { Text("Support NexTube") },
-                supportingContent = { Text("Free, open-source & ad-free. Support development via UPI or GitHub Sponsors.") },
-                leadingContent = { Icon(Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary) },
-                trailingContent = {
-                    FilledTonalButton(onClick = { showSupport = true }) { Text("Donate") }
-                },
-            )
-
             Section("About")
             ListItem(
                 headlineContent = { Text("NexTube ${BuildConfig.VERSION_NAME}") },
@@ -246,89 +242,6 @@ fun SettingsScreen(vm: MainViewModel) {
     if (showSupport) {
         SupportDialog(onDismiss = { showSupport = false })
     }
-}
-
-private const val SUPPORT_UPI_ID = "nextube@ybl"
-private const val SUPPORT_SPONSORS_URL = "https://github.com/sponsors/mehefujali"
-
-@Composable
-private fun SupportDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    fun copyUpi() {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("NexTube UPI ID", SUPPORT_UPI_ID))
-        Toast.makeText(context, "UPI ID copied: $SUPPORT_UPI_ID", Toast.LENGTH_SHORT).show()
-    }
-    fun payWithUpi() {
-        val uri = "upi://pay?pa=$SUPPORT_UPI_ID&pn=NexTube&tn=Support%20NexTube&cu=INR".toUri()
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: ActivityNotFoundException) {
-            copyUpi()
-            Toast.makeText(context, "No UPI app found — UPI ID copied", Toast.LENGTH_SHORT).show()
-        }
-    }
-    fun openSponsors() {
-        try {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, SUPPORT_SPONSORS_URL.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, "No browser found", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Support NexTube", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text(
-                    "NexTube is 100% free, open-source, and has no ads or tracking. If you find it useful, you can support its development:",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(14.dp))
-                Text("UPI (India)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            SUPPORT_UPI_ID,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = ::copyUpi) {
-                            Icon(Icons.Rounded.ContentCopy, "Copy UPI ID", Modifier.size(18.dp))
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = ::payWithUpi, modifier = Modifier.fillMaxWidth()) {
-                    Text("Pay with UPI app")
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Global", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = ::openSponsors, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("GitHub Sponsors")
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
-    )
 }
 
 @Composable

@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nextube.app.core.EngineState
 import com.nextube.app.core.Recommender
+import com.nextube.app.core.SponsorFeed
+import com.nextube.app.core.SponsorItem
 import com.nextube.app.core.UpdateInfo
 import com.nextube.app.core.Updater
 import com.nextube.app.core.YtDlp
@@ -34,7 +36,11 @@ import java.util.UUID
 sealed interface FeedState {
     data object Idle : FeedState
     data object Loading : FeedState
-    data class Results(val items: List<SearchItem>) : FeedState
+    data class Results(
+        val items: List<SearchItem>,
+        val loadingMore: Boolean = false,
+        val canLoadMore: Boolean = true,
+    ) : FeedState
     data class Error(val message: String) : FeedState
 }
 
@@ -103,11 +109,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _updating = MutableStateFlow(false)
     val updating: StateFlow<Boolean> = _updating.asStateFlow()
 
+    private val _sponsor = MutableStateFlow<SponsorItem?>(null)
+    val sponsor: StateFlow<SponsorItem?> = _sponsor.asStateFlow()
+
     private var searchJob: Job? = null
+    private var loadMoreJob: Job? = null
     private var detailsJob: Job? = null
     private var playlistJob: Job? = null
     private var lastQuery = "trending today"
+    private var currentOffset = 0
     private var forYouSeed = 0
+    private val pageSize = 20
 
     // ---- self-update ----
 
@@ -190,6 +202,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        // Fetch remote first-party sponsor card (non-blocking, cached).
+        viewModelScope.launch {
+            if (AppSettings.showSponsors.value) {
+                _sponsor.value = SponsorFeed.fetch(getApplication())
+            }
+        }
         // Fill the home feed once the engine has unpacked.
         viewModelScope.launch {
             engine.first { it is EngineState.Ready }
@@ -197,6 +215,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (_selectedCategory.value == "For You") runForYou()
                 else runSearch("trending today")
             }
+        }
+    }
+
+    fun refreshSponsor() {
+        viewModelScope.launch {
+            _sponsor.value = if (AppSettings.showSponsors.value) SponsorFeed.fetch(getApplication()) else null
         }
     }
 
@@ -246,21 +270,84 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         _forYouReason.value = rec.reason
         lastQuery = rec.query
+        currentOffset = 0
         searchJob?.cancel()
+        loadMoreJob?.cancel()
         _feed.value = FeedState.Loading
         searchJob = viewModelScope.launch {
-            _feed.value = runCatching { Recommender.filterFresh(YtDlp.search(rec.query), history) }
-                .fold({ FeedState.Results(it) }, { FeedState.Error(YtDlp.friendlyError(it)) })
+            _feed.value = runCatching {
+                val raw = YtDlp.search(rec.query, limit = pageSize, offset = 0)
+                currentOffset = pageSize
+                Recommender.filterFresh(raw, history).distinctBy { it.id }
+            }.fold(
+                { FeedState.Results(it, canLoadMore = it.isNotEmpty()) },
+                { FeedState.Error(YtDlp.friendlyError(it)) },
+            )
         }
     }
 
     private fun runSearch(q: String) {
         lastQuery = q
+        currentOffset = 0
         searchJob?.cancel()
+        loadMoreJob?.cancel()
         _feed.value = FeedState.Loading
         searchJob = viewModelScope.launch {
-            _feed.value = runCatching { YtDlp.search(q) }
-                .fold({ FeedState.Results(it) }, { FeedState.Error(YtDlp.friendlyError(it)) })
+            _feed.value = runCatching {
+                val raw = YtDlp.search(q, limit = pageSize, offset = 0).distinctBy { it.id }
+                currentOffset = pageSize
+                raw
+            }.fold(
+                { FeedState.Results(it, canLoadMore = it.size >= 5) },
+                { FeedState.Error(YtDlp.friendlyError(it)) },
+            )
+        }
+    }
+
+    /** Loads the next batch of videos smoothly when the user scrolls near the bottom. */
+    fun loadMore() {
+        val current = _feed.value as? FeedState.Results ?: return
+        if (current.loadingMore || !current.canLoadMore) return
+        if (loadMoreJob?.isActive == true) return
+        // Cap a single query at 160 items to keep yt-dlp fast; For You rotates topics automatically.
+        val isForYou = _selectedCategory.value == "For You"
+        _feed.value = current.copy(loadingMore = true)
+        loadMoreJob = viewModelScope.launch {
+            val existingIds = current.items.map { it.id }.toHashSet()
+            val history = tasks.value
+            val result = runCatching {
+                if (isForYou && currentOffset >= 40) {
+                    // Rotate to the next personalized interest for endless variety like YouTube!
+                    forYouSeed++
+                    val nextRec = Recommender.buildQuery(history, forYouSeed)
+                    val q = nextRec?.query ?: "trending today"
+                    lastQuery = q
+                    currentOffset = 0
+                    val raw = YtDlp.search(q, limit = pageSize, offset = 0)
+                    currentOffset = pageSize
+                    Recommender.filterFresh(raw, history)
+                } else {
+                    val raw = YtDlp.search(lastQuery, limit = pageSize, offset = currentOffset)
+                    currentOffset += pageSize
+                    if (isForYou) Recommender.filterFresh(raw, history) else raw
+                }
+            }
+            val latest = _feed.value as? FeedState.Results ?: return@launch
+            result.fold(
+                onSuccess = { fetched ->
+                    val fresh = fetched.filter { existingIds.add(it.id) }
+                    val canContinue = if (isForYou) true else (fetched.size >= 5 && currentOffset < 160)
+                    _feed.value = latest.copy(
+                        items = latest.items + fresh,
+                        loadingMore = false,
+                        canLoadMore = canContinue,
+                    )
+                },
+                onFailure = {
+                    // Don't wipe already-loaded items; just stop the footer spinner.
+                    _feed.value = latest.copy(loadingMore = false)
+                },
+            )
         }
     }
 

@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "sponsors": [
+    {
+      "id": "nextube-sponsor-1",
+      "badge": "Sponsored",
+      "title": "Support NexTube Open-Source",
+      "subtitle": "100% free, fast & private video downloader. Sponsor development on GitHub.",
+      "cta": "Sponsor",
+      "url": "https://github.com/sponsors/mehefujali",
+      "imageUrl": ""
+    }
+  ]
+}
