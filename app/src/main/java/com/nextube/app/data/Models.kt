@@ -53,7 +53,7 @@ data class PlaylistDetails(
     val items: List<SearchItem>,
 )
 
-enum class DownloadStatus { QUEUED, DOWNLOADING, PROCESSING, COMPLETED, FAILED, CANCELLED;
+enum class DownloadStatus { QUEUED, DOWNLOADING, PROCESSING, PAUSED, COMPLETED, FAILED, CANCELLED;
     val isActive get() = this == QUEUED || this == DOWNLOADING || this == PROCESSING
 }
 

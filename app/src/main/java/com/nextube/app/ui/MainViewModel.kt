@@ -346,27 +346,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _messages.tryEmit(UiMessage(msg, actionLabel = "View", openDownloads = true))
     }
 
+    fun pause(task: DownloadTask) = DownloadService.pause(getApplication(), task.id)
+
+    fun resume(task: DownloadTask) {
+        DownloadRepository.update(task.id) {
+            it.copy(status = DownloadStatus.QUEUED, error = null, speed = "", etaSec = -1)
+        }
+        DownloadService.enqueue(getApplication(), task.id)
+    }
+
     fun cancel(task: DownloadTask) = DownloadService.cancel(getApplication(), task.id)
 
     fun retry(task: DownloadTask) {
         DownloadRepository.update(task.id) {
-            it.copy(status = DownloadStatus.QUEUED, progress = 0f, error = null, speed = "", etaSec = -1)
+            it.copy(status = DownloadStatus.QUEUED, error = null, speed = "", etaSec = -1)
         }
         DownloadService.enqueue(getApplication(), task.id)
     }
 
     fun delete(task: DownloadTask, deleteFile: Boolean) {
         if (task.status.isActive) DownloadService.cancel(getApplication(), task.id)
+        else DownloadService.clearWorkDir(getApplication(), task.id)
         if (deleteFile) task.fileUri?.let { MediaSaver.delete(getApplication(), it) }
         DownloadRepository.remove(task.id)
     }
 
     fun clearFinished() {
-        val ids = tasks.value
-            .filter { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }
-            .map { it.id }
-            .toSet()
-        DownloadRepository.removeAll(ids)
+        val toClear = tasks.value.filter { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }
+        toClear.forEach { DownloadService.clearWorkDir(getApplication(), it.id) }
+        DownloadRepository.removeAll(toClear.map { it.id }.toSet())
     }
 
     fun engineVersion(): String? = YtDlp.version(getApplication())

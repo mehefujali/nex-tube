@@ -364,7 +364,6 @@ object YtDlp {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("NexTube", "fast client failed, retrying with defaults", e)
-                outDir.deleteRecursively()
             }
         }
         return runDownload(task, outDir, fast = false, onLine)
@@ -374,6 +373,7 @@ object YtDlp {
         outDir.mkdirs()
         val req = YoutubeDLRequest(task.url)
             .addCommands(task.args)
+            .addOption("--continue")
             .addOption("--no-playlist")
             .addOption("--no-mtime")
             .addOption("--embed-metadata")

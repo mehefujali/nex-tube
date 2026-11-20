@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Share
@@ -88,7 +89,7 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
         TopAppBar(
             title = { Text("Downloads", fontWeight = FontWeight.Bold) },
             actions = {
-                if (tab == 0 && active.any { !it.status.isActive }) {
+                if (tab == 0 && active.any { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
                     IconButton(onClick = vm::clearFinished) { Icon(Icons.Rounded.DeleteSweep, "Clear failed") }
                 }
             },
@@ -107,7 +108,14 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
         } else {
             LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(list, key = { it.id }) { t ->
-                    if (tab == 0) ActiveRow(t, onCancel = { vm.cancel(t) }, onRetry = { vm.retry(t) }, onRemove = { vm.delete(t, false) })
+                    if (tab == 0) ActiveRow(
+                        t,
+                        onPause = { vm.pause(t) },
+                        onResume = { vm.resume(t) },
+                        onCancel = { vm.cancel(t) },
+                        onRetry = { vm.retry(t) },
+                        onRemove = { vm.delete(t, false) },
+                    )
                     else DoneRow(
                         t,
                         onPlay = { PlayerActivity.start(context, t.id) },
@@ -144,7 +152,14 @@ private fun RowThumb(t: DownloadTask) {
 }
 
 @Composable
-private fun ActiveRow(t: DownloadTask, onCancel: () -> Unit, onRetry: () -> Unit, onRemove: () -> Unit) {
+private fun ActiveRow(
+    t: DownloadTask,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    onRemove: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         RowThumb(t)
         Spacer(Modifier.width(12.dp))
@@ -165,6 +180,14 @@ private fun ActiveRow(t: DownloadTask, onCancel: () -> Unit, onRetry: () -> Unit
                     LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape))
                     Caption("${t.note.ifEmpty { "Processing" }} · ${t.optionLabel}")
                 }
+                DownloadStatus.PAUSED -> {
+                    LinearProgressIndicator(
+                        progress = { t.progress },
+                        modifier = Modifier.fillMaxWidth().clip(CircleShape),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Caption("Paused · ${(t.progress * 100).toInt()}% · ${t.optionLabel}")
+                }
                 DownloadStatus.FAILED -> Text(
                     t.error ?: "Failed", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -173,11 +196,24 @@ private fun ActiveRow(t: DownloadTask, onCancel: () -> Unit, onRetry: () -> Unit
                 DownloadStatus.COMPLETED -> Unit
             }
         }
-        if (t.status.isActive) {
-            IconButton(onClick = onCancel) { Icon(Icons.Rounded.Close, "Cancel") }
-        } else {
-            IconButton(onClick = onRetry) { Icon(Icons.Rounded.Refresh, "Retry") }
-            IconButton(onClick = onRemove) { Icon(Icons.Rounded.Delete, "Remove") }
+        when {
+            t.status == DownloadStatus.DOWNLOADING || t.status == DownloadStatus.QUEUED -> {
+                IconButton(onClick = onPause) { Icon(Icons.Rounded.Pause, "Pause") }
+                IconButton(onClick = onCancel) { Icon(Icons.Rounded.Close, "Cancel") }
+            }
+            t.status == DownloadStatus.PROCESSING -> {
+                IconButton(onClick = onCancel) { Icon(Icons.Rounded.Close, "Cancel") }
+            }
+            t.status == DownloadStatus.PAUSED -> {
+                IconButton(onClick = onResume) {
+                    Icon(Icons.Rounded.PlayArrow, "Resume", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = onCancel) { Icon(Icons.Rounded.Close, "Cancel") }
+            }
+            else -> {
+                IconButton(onClick = onRetry) { Icon(Icons.Rounded.Refresh, "Retry") }
+                IconButton(onClick = onRemove) { Icon(Icons.Rounded.Delete, "Remove") }
+            }
         }
     }
 }

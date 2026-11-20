@@ -25,6 +25,7 @@ import com.nextube.app.data.MediaSaver
 import com.nextube.app.ui.MainActivity
 import com.nextube.app.util.Fmt
 import com.yausername.youtubedl_android.YoutubeDL
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,11 +45,17 @@ class DownloadService : Service() {
         const val CHANNEL_DONE = "downloads_done"
         private const val ONGOING_ID = 1
         private const val ACTION_ENQUEUE = "enqueue"
+        private const val ACTION_PAUSE = "pause"
         private const val ACTION_CANCEL = "cancel"
         private const val EXTRA_ID = "id"
 
         fun enqueue(context: Context, taskId: String) = send(context, ACTION_ENQUEUE, taskId)
+        fun pause(context: Context, taskId: String) = send(context, ACTION_PAUSE, taskId)
         fun cancel(context: Context, taskId: String) = send(context, ACTION_CANCEL, taskId)
+
+        fun clearWorkDir(context: Context, taskId: String) {
+            runCatching { File(context.cacheDir, "dl/$taskId").deleteRecursively() }
+        }
 
         private fun send(context: Context, action: String, id: String) {
             val i = Intent(context, DownloadService::class.java).setAction(action).putExtra(EXTRA_ID, id)
@@ -78,6 +85,7 @@ class DownloadService : Service() {
         val id = intent?.getStringExtra(EXTRA_ID)
         when (intent?.action) {
             ACTION_ENQUEUE -> if (id != null) start(id)
+            ACTION_PAUSE -> if (id != null) pauseTask(id)
             ACTION_CANCEL -> if (id != null) cancelTask(id)
         }
         stopIfIdle()
@@ -104,9 +112,10 @@ class DownloadService : Service() {
 
     private suspend fun run(id: String) {
         val task = DownloadRepository.get(id) ?: return
-        if (task.status == DownloadStatus.CANCELLED) return
-        val work = File(cacheDir, "dl/$id").apply { deleteRecursively(); mkdirs() }
-        DownloadRepository.update(id) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0f, error = null) }
+        if (task.status == DownloadStatus.CANCELLED || task.status == DownloadStatus.PAUSED) return
+        // Keep existing .part files so yt-dlp --continue resumes from where it stopped.
+        val work = File(cacheDir, "dl/$id").apply { mkdirs() }
+        DownloadRepository.update(id) { it.copy(status = DownloadStatus.DOWNLOADING, error = null) }
         refreshOngoing(force = true)
         try {
             // Video downloads come as two streams (video, then audio); combine them into one bar.
@@ -121,7 +130,7 @@ class DownloadService : Service() {
                     val total = maxOf(streams.values.sumOf { it.total }, estimate)
                     val fraction = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
                     DownloadRepository.update(id, persist = false) {
-                        if (it.status == DownloadStatus.CANCELLED) it else it.copy(
+                        if (it.status == DownloadStatus.CANCELLED || it.status == DownloadStatus.PAUSED) it else it.copy(
                             status = DownloadStatus.DOWNLOADING,
                             progress = maxOf(fraction, it.progress), // never jump backwards
                             etaSec = p.eta,
@@ -133,7 +142,7 @@ class DownloadService : Service() {
                     line.startsWith("[EmbedThumbnail]") || line.startsWith("[FixupM")
                 ) {
                     DownloadRepository.update(id, persist = false) {
-                        if (it.status == DownloadStatus.CANCELLED) it
+                        if (it.status == DownloadStatus.CANCELLED || it.status == DownloadStatus.PAUSED) it
                         else it.copy(status = DownloadStatus.PROCESSING, speed = "", etaSec = -1)
                     }
                     refreshOngoing(force = true)
@@ -151,25 +160,44 @@ class DownloadService : Service() {
                 )
             }
             notifyDone(id, saved.displayName, saved.uri, saved.mime)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: YoutubeDL.CanceledException) {
-            DownloadRepository.update(id) { it.copy(status = DownloadStatus.CANCELLED, speed = "", etaSec = -1) }
+            val current = DownloadRepository.get(id)
+            if (current?.status != DownloadStatus.PAUSED) {
+                DownloadRepository.update(id) { it.copy(status = DownloadStatus.CANCELLED, progress = 0f, speed = "", etaSec = -1) }
+            }
         } catch (t: Throwable) {
             val current = DownloadRepository.get(id)
-            if (current?.status != DownloadStatus.CANCELLED) {
+            if (current?.status != DownloadStatus.CANCELLED && current?.status != DownloadStatus.PAUSED) {
                 val msg = YtDlp.friendlyError(t)
                 DownloadRepository.update(id) { it.copy(status = DownloadStatus.FAILED, error = msg, speed = "", etaSec = -1) }
                 notifyFailed(id, task.title, msg)
             }
         } finally {
-            work.deleteRecursively()
+            // Preserve .part files when PAUSED or FAILED so resuming/retrying continues from disk.
+            val finalStatus = DownloadRepository.get(id)?.status
+            if (finalStatus == null || finalStatus == DownloadStatus.COMPLETED || finalStatus == DownloadStatus.CANCELLED) {
+                work.deleteRecursively()
+            }
         }
     }
 
+    private fun pauseTask(id: String) {
+        DownloadRepository.update(id) {
+            if (it.status.isActive) it.copy(status = DownloadStatus.PAUSED, speed = "", etaSec = -1, note = "")
+            else it
+        }
+        YtDlp.cancel(id)
+        jobs[id]?.cancel()
+    }
+
     private fun cancelTask(id: String) {
-        DownloadRepository.update(id) { it.copy(status = DownloadStatus.CANCELLED, speed = "", etaSec = -1) }
+        DownloadRepository.update(id) { it.copy(status = DownloadStatus.CANCELLED, progress = 0f, speed = "", etaSec = -1, note = "") }
         YtDlp.cancel(id)
         // Stops queued tasks that are still waiting on the semaphore.
         jobs[id]?.cancel()
+        clearWorkDir(this, id)
     }
 
     private fun stopIfIdle() {
@@ -208,6 +236,11 @@ class DownloadService : Service() {
             else -> listOfNotNull("$pct%", current.speed.ifEmpty { null }).joinToString(" · ")
         }
         val more = if (active.size > 1) " (+${active.size - 1} more)" else ""
+        val pause = PendingIntent.getService(
+            this, current.id.hashCode() xor 1,
+            Intent(this, DownloadService::class.java).setAction(ACTION_PAUSE).putExtra(EXTRA_ID, current.id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val cancel = PendingIntent.getService(
             this, current.id.hashCode(),
             Intent(this, DownloadService::class.java).setAction(ACTION_CANCEL).putExtra(EXTRA_ID, current.id),
@@ -216,6 +249,7 @@ class DownloadService : Service() {
         return b.setContentTitle(current.title + more)
             .setContentText(sub)
             .setProgress(100, pct, current.status != DownloadStatus.DOWNLOADING || pct == 0)
+            .addAction(0, "Pause", pause)
             .addAction(0, "Cancel", cancel)
             .build()
     }
