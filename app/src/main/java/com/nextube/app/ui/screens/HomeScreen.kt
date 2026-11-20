@@ -84,7 +84,6 @@ fun HomeScreen(vm: MainViewModel) {
     val feed by vm.feed.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val selected by vm.selectedCategory.collectAsStateWithLifecycle()
-    val forYouReason by vm.forYouReason.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     val clipboardLink = rememberClipboardLink()
@@ -132,7 +131,7 @@ fun HomeScreen(vm: MainViewModel) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 6.dp),
+                modifier = Modifier.padding(bottom = 8.dp),
             ) {
                 items(vm.categories) { c ->
                     FilterChip(
@@ -142,14 +141,6 @@ fun HomeScreen(vm: MainViewModel) {
                         shape = CircleShape,
                     )
                 }
-            }
-            if (selected == "For You" && !forYouReason.isNullOrEmpty()) {
-                Text(
-                    "Picked from your downloads · $forYouReason",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                )
             }
         }
 

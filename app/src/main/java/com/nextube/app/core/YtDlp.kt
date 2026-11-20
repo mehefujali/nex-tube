@@ -14,11 +14,15 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import com.yausername.youtubedl_android.mapper.VideoFormat
 import com.yausername.youtubedl_android.mapper.VideoInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -33,6 +37,9 @@ sealed interface EngineState {
 object YtDlp {
     private val _state = MutableStateFlow<EngineState>(EngineState.Initializing)
     val state: StateFlow<EngineState> = _state.asStateFlow()
+
+    /** Prevents yt-dlp self-update from colliding with an in-flight search or video info lookup. */
+    private val updateMutex = Mutex()
 
     private val ytdl get() = YoutubeDL.getInstance()
 
@@ -115,15 +122,34 @@ object YtDlp {
             if (System.currentTimeMillis() - at < DETAILS_TTL) return@withContext d
         }
         awaitReady()
+        // Wait if a background engine update is currently replacing the yt-dlp binary.
+        if (updateMutex.isLocked) updateMutex.withLock { }
         val started = System.currentTimeMillis()
-        fun fetch(fast: Boolean) = ytdl.getInfo(
-            YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-warnings").withCache().apply {
+        fun fetch(fast: Boolean, useCache: Boolean = true) = ytdl.getInfo(
+            YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-warnings").apply {
+                if (useCache) withCache() else addOption("--no-cache-dir")
                 if (fast) addOption("--extractor-args", FAST_CLIENT)
             }
         )
-        val info = (if (isYouTube(url)) runCatching { fetch(fast = true) }.getOrNull() else null)
-            ?.takeIf { i -> i.formats.orEmpty().any { it.hasVideo() } }
-            ?: fetch(fast = false)
+        suspend fun resolveInfo(): VideoInfo {
+            if (isYouTube(url)) {
+                val fastInfo = runCatching { fetch(fast = true, useCache = true) }
+                    .getOrNull()
+                    ?.takeIf { i -> i.formats.orEmpty().any { it.hasVideo() } }
+                if (fastInfo != null) return fastInfo
+            }
+            return try {
+                fetch(fast = false, useCache = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (firstErr: Throwable) {
+                // Retry once without cache in case a cold socket or stale cache entry caused a 1st-click error.
+                android.util.Log.w("NexTube", "details 1st attempt failed, retrying without cache", firstErr)
+                delay(300)
+                fetch(fast = false, useCache = false)
+            }
+        }
+        val info = resolveInfo()
         android.util.Log.i("NexTube", "details fetched in ${System.currentTimeMillis() - started} ms")
         val duration = info.duration.toLong()
         VideoDetails(
@@ -377,10 +403,12 @@ object YtDlp {
     /** YouTube changes often; updating yt-dlp fixes most failures. Returns a human message. */
     suspend fun update(context: Context): String = withContext(Dispatchers.IO) {
         awaitReady()
-        when (ytdl.updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)) {
-            YoutubeDL.UpdateStatus.DONE -> "Updated to ${version(context)}"
-            YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "Already up to date"
-            else -> "Update finished"
+        updateMutex.withLock {
+            when (ytdl.updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)) {
+                YoutubeDL.UpdateStatus.DONE -> "Updated to ${version(context)}"
+                YoutubeDL.UpdateStatus.ALREADY_UP_TO_DATE -> "Already up to date"
+                else -> "Update finished"
+            }
         }
     }
 

@@ -63,7 +63,7 @@ fun AppRoot(vm: MainViewModel, tab: Int, onTabChange: (Int) -> Unit) {
 
     val dests = listOf(
         Dest("YouTube", Icons.Outlined.Home, Icons.Rounded.Home),
-        Dest("Social", Icons.Outlined.Explore, Icons.Rounded.Explore),
+        Dest("Explore", Icons.Outlined.Explore, Icons.Rounded.Explore),
         Dest("Downloads", Icons.Outlined.Download, Icons.Rounded.Download),
         Dest("Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
     )

@@ -64,25 +64,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.nextube.app.ui.MainViewModel
+import com.nextube.app.ui.components.PlatformLogo
 import com.nextube.app.util.Fmt
 
 private data class SupportedSite(
+    val id: String,
     val name: String,
     val subtitle: String,
     val url: String,
-    val color: Color,
-    val shortTag: String,
 )
 
 private val SUPPORTED_SITES = listOf(
-    SupportedSite("Instagram", "Reels, Posts & Stories", "https://www.instagram.com/", Color(0xFFE1306C), "IG"),
-    SupportedSite("Facebook", "Reels, Watch & Videos", "https://www.facebook.com/watch/", Color(0xFF1877F2), "FB"),
-    SupportedSite("X / Twitter", "Videos & GIFs", "https://x.com/", Color(0xFF1DA1F2), "X"),
-    SupportedSite("TikTok", "Short Videos", "https://www.tiktok.com/", Color(0xFF00B8C2), "TT"),
-    SupportedSite("SoundCloud", "Tracks & Playlists", "https://soundcloud.com/", Color(0xFFFF5500), "SC"),
-    SupportedSite("Reddit", "Video Posts", "https://www.reddit.com/", Color(0xFFFF4500), "RD"),
-    SupportedSite("Vimeo", "HD & 4K Videos", "https://vimeo.com/", Color(0xFF1AB7EA), "VM"),
-    SupportedSite("Pinterest", "Video Pins", "https://www.pinterest.com/", Color(0xFFE60023), "PI"),
+    SupportedSite("instagram", "Instagram", "Reels, Posts & Stories", "https://www.instagram.com/"),
+    SupportedSite("facebook", "Facebook", "Reels, Watch & Videos", "https://www.facebook.com/watch/"),
+    SupportedSite("x", "X / Twitter", "Videos & GIFs", "https://x.com/"),
+    SupportedSite("tiktok", "TikTok", "Short Videos", "https://www.tiktok.com/"),
+    SupportedSite("soundcloud", "SoundCloud", "Tracks & Playlists", "https://soundcloud.com/"),
+    SupportedSite("reddit", "Reddit", "Video Posts", "https://www.reddit.com/"),
+    SupportedSite("vimeo", "Vimeo", "HD & 4K Videos", "https://vimeo.com/"),
+    SupportedSite("pinterest", "Pinterest", "Video Pins", "https://www.pinterest.com/"),
 )
 
 /**
@@ -132,7 +132,7 @@ fun SitesScreen(vm: MainViewModel) {
         item {
             Column(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Social & Sites", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Explore", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         shape = CircleShape,
@@ -149,7 +149,7 @@ fun SitesScreen(vm: MainViewModel) {
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Paste any link from Instagram, Facebook, X, TikTok, SoundCloud, or share directly to NexTube.",
+                    "Paste any video link from Instagram, Facebook, X, TikTok, SoundCloud, or 1000+ other sites to download.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -315,17 +315,7 @@ private fun SiteCard(site: SupportedSite, onClick: () -> Unit, modifier: Modifie
             Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(site.color),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    site.shortTag,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
-                )
-            }
+            PlatformLogo(id = site.id, size = 42.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
