@@ -39,7 +39,6 @@ The first launch takes a few seconds while yt-dlp, Python and ffmpeg unpack ("Pr
 | Path | Responsibility |
 |---|---|
 | `core/YtDlp.kt` | Everything that talks to yt-dlp: search, info, quality options, download, update |
-| `core/Watermarker.kt` | Optional logo overlay using Media3 Transformer |
 | `service/DownloadService.kt` | Foreground queue, progress, notifications |
 | `data/` | Models, persisted download list, settings, saving to `Download/NexTube` |
 | `ui/` | Jetpack Compose screens and the `MainViewModel` |

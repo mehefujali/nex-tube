@@ -37,13 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.foundation.Image
-import androidx.compose.material.icons.rounded.BrandingWatermark
-import androidx.compose.material.icons.rounded.Place
-import androidx.compose.ui.res.painterResource
 import com.nextube.app.BuildConfig
-import com.nextube.app.R
-import com.nextube.app.data.WatermarkPosition
 import com.nextube.app.core.EngineState
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.MediaSaver
@@ -56,8 +50,6 @@ fun SettingsScreen(vm: MainViewModel) {
     val theme by AppSettings.theme.collectAsStateWithLifecycle()
     val maxConcurrent by AppSettings.maxConcurrent.collectAsStateWithLifecycle()
     val autoUpdate by AppSettings.autoUpdate.collectAsStateWithLifecycle()
-    val watermark by AppSettings.watermark.collectAsStateWithLifecycle()
-    val watermarkPosition by AppSettings.watermarkPosition.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val updating by vm.updating.collectAsStateWithLifecycle()
     val engineMessage by vm.engineMessage.collectAsStateWithLifecycle()
@@ -92,39 +84,6 @@ fun SettingsScreen(vm: MainViewModel) {
                 },
                 leadingContent = { Icon(Icons.Rounded.Bolt, null) },
             )
-
-            Section("Watermark")
-            ListItem(
-                headlineContent = { Text("Add NexTube logo to videos") },
-                supportingContent = {
-                    Text("Re-encodes each video after download, so saving takes a little longer. Audio downloads are not changed.")
-                },
-                leadingContent = { Icon(Icons.Rounded.BrandingWatermark, null) },
-                trailingContent = { Switch(checked = watermark, onCheckedChange = AppSettings::setWatermark) },
-            )
-            if (watermark) {
-                ListItem(
-                    headlineContent = { Text("Logo position") },
-                    supportingContent = {
-                        Column {
-                            Image(
-                                painterResource(R.drawable.watermark), null,
-                                Modifier.padding(top = 8.dp).height(28.dp),
-                            )
-                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                                WatermarkPosition.entries.forEachIndexed { i, p ->
-                                    SegmentedButton(
-                                        selected = watermarkPosition == p,
-                                        onClick = { AppSettings.setWatermarkPosition(p) },
-                                        shape = SegmentedButtonDefaults.itemShape(i, WatermarkPosition.entries.size),
-                                    ) { Text(p.label) }
-                                }
-                            }
-                        }
-                    },
-                    leadingContent = { Icon(Icons.Rounded.Place, null) },
-                )
-            }
 
             Section("Appearance")
             ListItem(

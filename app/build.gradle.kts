@@ -98,12 +98,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
-    // Hardware-accelerated re-encode for the optional logo watermark.
-    val media3 = "1.8.0"
-    implementation("androidx.media3:media3-transformer:$media3")
-    implementation("androidx.media3:media3-effect:$media3")
-    implementation("androidx.media3:media3-common:$media3")
-
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
 }

@@ -8,8 +8,6 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
-enum class WatermarkPosition(val label: String) { BOTTOM_LEFT("Left"), BOTTOM_CENTER("Center"), BOTTOM_RIGHT("Right") }
-
 object AppSettings {
     private lateinit var prefs: SharedPreferences
 
@@ -22,22 +20,8 @@ object AppSettings {
     private val _autoUpdate = MutableStateFlow(true)
     val autoUpdate: StateFlow<Boolean> = _autoUpdate.asStateFlow()
 
-    private val _watermark = MutableStateFlow(false)
-    val watermark: StateFlow<Boolean> = _watermark.asStateFlow()
-
-    private val _watermarkPosition = MutableStateFlow(WatermarkPosition.BOTTOM_RIGHT)
-    val watermarkPosition: StateFlow<WatermarkPosition> = _watermarkPosition.asStateFlow()
-
-    fun setWatermark(on: Boolean) { _watermark.value = on; prefs.edit().putBoolean("watermark", on).apply() }
-    fun setWatermarkPosition(p: WatermarkPosition) {
-        _watermarkPosition.value = p; prefs.edit().putString("watermark_position", p.name).apply()
-    }
-
     fun init(context: Context) {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-        _watermark.value = prefs.getBoolean("watermark", false)
-        _watermarkPosition.value = runCatching { WatermarkPosition.valueOf(prefs.getString("watermark_position", null)!!) }
-            .getOrDefault(WatermarkPosition.BOTTOM_RIGHT)
         _theme.value = runCatching { ThemeMode.valueOf(prefs.getString("theme", null)!!) }.getOrDefault(ThemeMode.SYSTEM)
         _maxConcurrent.value = prefs.getInt("max_concurrent", 2).coerceIn(1, 3)
         _autoUpdate.value = prefs.getBoolean("auto_update", true)

@@ -16,7 +16,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.nextube.app.R
-import com.nextube.app.core.Watermarker
 import com.nextube.app.core.YtDlp
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadRepository
@@ -142,9 +141,8 @@ class DownloadService : Service() {
             }
             DownloadRepository.update(id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f) }
             refreshOngoing(force = true)
-            val finalFile = if (task.kind == MediaKind.VIDEO && AppSettings.watermark.value) watermark(id, file) else file
             DownloadRepository.update(id, persist = false) { it.copy(note = "Saving") }
-            val saved = MediaSaver.save(applicationContext, finalFile)
+            val saved = MediaSaver.save(applicationContext, file)
             DownloadRepository.update(id) {
                 it.copy(
                     status = DownloadStatus.COMPLETED, progress = 1f, speed = "", etaSec = -1,
@@ -167,34 +165,10 @@ class DownloadService : Service() {
         }
     }
 
-    /** Re-encodes with the logo. If anything goes wrong the user still gets the original video. */
-    private suspend fun watermark(id: String, file: File): File {
-        val out = File(file.parentFile, file.nameWithoutExtension + ".wm.mp4")
-        DownloadRepository.update(id, persist = false) { it.copy(note = "Adding watermark") }
-        refreshOngoing(force = true)
-        return try {
-            Watermarker.apply(applicationContext, file, out, AppSettings.watermarkPosition.value) { pct ->
-                DownloadRepository.update(id, persist = false) { it.copy(note = "Adding watermark $pct%") }
-                refreshOngoing()
-            }
-            // Keep the original file name.
-            File(file.parentFile, file.nameWithoutExtension + ".mp4").also { dest ->
-                file.delete()
-                out.renameTo(dest)
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            android.util.Log.w("NexTube", "watermark failed, saving original", e)
-            out.delete()
-            file
-        }
-    }
-
     private fun cancelTask(id: String) {
         DownloadRepository.update(id) { it.copy(status = DownloadStatus.CANCELLED, speed = "", etaSec = -1) }
         YtDlp.cancel(id)
-        // Stops queued tasks waiting on the semaphore and an in-progress watermark step.
+        // Stops queued tasks that are still waiting on the semaphore.
         jobs[id]?.cancel()
     }
 

@@ -37,7 +37,6 @@
 - ⚡ **Fast:** video info in ~6 s on a mid-range phone, parallel fragment downloads
 - 📊 **Live progress:** percentage, speed and time left in the app and in the notification
 - 🔁 **Background queue:** 1–3 downloads at once, cancel and retry, survives leaving the app
-- 🏷️ **Optional watermark:** burn the NexTube logo into videos using the hardware encoder
 - 🔄 **Self-updating engine:** yt-dlp updates itself daily, so downloads keep working when YouTube changes
 - 🌗 **Material 3:** light, dark and system themes
 - 🔒 **Private:** no account, no analytics, no server. Files are saved to `Download/NexTube`
@@ -77,8 +76,7 @@ debug key otherwise.
 app/src/main/java/com/nextube/app/
 ├── NexTubeApp.kt             starts the engine, daily yt-dlp update
 ├── core/
-│   ├── YtDlp.kt              search, video info, quality list, download (yt-dlp + ffmpeg on device)
-│   └── Watermarker.kt        logo overlay via Media3 Transformer (hardware encoder)
+│   └── YtDlp.kt              search, video info, quality list, download (yt-dlp + ffmpeg on device)
 ├── data/                     models, download history (JSON), settings, MediaStore saver
 ├── service/DownloadService   foreground download queue and notifications
 └── ui/                       Jetpack Compose: Home, quality sheet, Downloads, Settings
@@ -116,5 +114,4 @@ NexTube is free software, released under the **[GNU General Public License v3.0]
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp): the download engine
 - [youtubedl-android](https://github.com/JunkFood02/youtubedl-android): yt-dlp, Python and ffmpeg for Android (GPL-3.0)
 - [FFmpeg](https://ffmpeg.org): merging and audio conversion
-- [AndroidX Media3](https://developer.android.com/media/media3): watermark encoding
 - [Coil](https://coil-kt.github.io/coil/): image loading

@@ -61,7 +61,7 @@ data class DownloadTask(
     val mimeType: String? = null,
     val sizeBytes: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),
-    /** Short live status such as "Adding watermark 40%"; not persisted. */
+    /** Short live status such as "Saving"; not persisted. */
     val note: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
