@@ -1,0 +1,45 @@
+name: 🐞 Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If a download fails, first try **Settings → Download engine → Update**. YouTube changes often.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Video link (if relevant)
+      placeholder: https://youtu.be/...
+  - type: input
+    id: quality
+    attributes:
+      label: Selected quality
+      placeholder: 1080p MP4 / MP3 320 kbps
+  - type: input
+    id: version
+    attributes:
+      label: NexTube version
+      description: Settings → About
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone model and Android version
+      placeholder: Pixel 8, Android 15
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `adb logcat -s NexTube`, or the error text shown in the app
+      render: text
