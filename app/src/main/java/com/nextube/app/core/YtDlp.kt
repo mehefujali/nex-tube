@@ -1,6 +1,7 @@
 package com.nextube.app.core
 
 import android.content.Context
+import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadOption
 import com.nextube.app.data.DownloadTask
 import com.nextube.app.data.MediaKind
@@ -397,19 +398,42 @@ object YtDlp {
      * [onLine] receives every output line; progress lines start with [PROGRESS_PREFIX].
      */
     fun download(task: DownloadTask, outDir: File, onLine: (String) -> Unit): File {
-        if (isYouTube(task.url)) {
-            try {
-                return runDownload(task, outDir, fast = true, onLine)
-            } catch (e: YoutubeDL.CanceledException) {
+        fun tryWithFallback(allowSubs: Boolean): File {
+            if (isYouTube(task.url)) {
+                try {
+                    return runDownload(task, outDir, fast = true, allowSubs = allowSubs, onLine = onLine)
+                } catch (e: YoutubeDL.CanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("NexTube", "fast client failed, retrying with defaults", e)
+                }
+            }
+            return runDownload(task, outDir, fast = false, allowSubs = allowSubs, onLine = onLine)
+        }
+
+        return try {
+            tryWithFallback(allowSubs = true)
+        } catch (e: YoutubeDL.CanceledException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = e.message.orEmpty()
+            // YouTube frequently returns HTTP 429 on subtitle endpoints; never fail the whole video for subtitles.
+            if (AppSettings.embedSubs.value && (msg.contains("subtitle", true) || msg.contains("429", true))) {
+                android.util.Log.w("NexTube", "Subtitle fetch rate-limited (429), retrying video without subtitles")
+                tryWithFallback(allowSubs = false)
+            } else {
                 throw e
-            } catch (e: Exception) {
-                android.util.Log.w("NexTube", "fast client failed, retrying with defaults", e)
             }
         }
-        return runDownload(task, outDir, fast = false, onLine)
     }
 
-    private fun runDownload(task: DownloadTask, outDir: File, fast: Boolean, onLine: (String) -> Unit): File {
+    private fun runDownload(
+        task: DownloadTask,
+        outDir: File,
+        fast: Boolean,
+        allowSubs: Boolean,
+        onLine: (String) -> Unit,
+    ): File {
         outDir.mkdirs()
         val req = YoutubeDLRequest(resolveUrl(task.url))
             .addCommands(task.args)
@@ -428,6 +452,18 @@ object YtDlp {
             .addOption("-o", File(outDir, "%(title).150B.%(ext)s").absolutePath)
             .withCookies()
             .withCache()
+            .apply {
+                val limit = AppSettings.speedLimitKbps.value
+                if (limit > 0) addOption("--limit-rate", "${limit}K")
+                if (AppSettings.sponsorBlock.value && isYouTube(task.url)) {
+                    addOption("--sponsorblock-remove", "sponsor,selfpromo,intro,outro")
+                }
+                if (allowSubs && AppSettings.embedSubs.value && task.kind == MediaKind.VIDEO) {
+                    addOption("--embed-subs")
+                    addOption("--sub-langs", "en,bn,hi")
+                    addOption("--sleep-subtitles", 1)
+                }
+            }
         if (fast) req.addOption("--extractor-args", FAST_CLIENT)
         ytdl.execute(req, task.id) { _, _, line -> onLine(line) }
         val junk = setOf("part", "ytdl", "temp", "jpg", "jpeg", "webp", "png", "json")

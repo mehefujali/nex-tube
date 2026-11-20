@@ -7,6 +7,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,12 +37,14 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,6 +53,8 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,10 +68,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nextube.app.R
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadStatus
 import com.nextube.app.data.DownloadTask
@@ -92,11 +99,13 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
     val scope = rememberCoroutineScope()
     var toDelete by remember { mutableStateOf<DownloadTask?>(null) }
     var showSupport by remember { mutableStateOf(false) }
+    var filterQuery by remember { mutableStateOf("") }
+    var filterKind by remember { mutableStateOf<MediaKind?>(null) }
     val context = LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Downloads", fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.nav_downloads), fontWeight = FontWeight.Bold) },
             actions = {
                 if (pagerState.currentPage == 0 && active.any { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }) {
                     IconButton(onClick = vm::clearFinished) { Icon(Icons.Rounded.DeleteSweep, "Clear failed") }
@@ -107,12 +116,12 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
             Tab(
                 selected = pagerState.currentPage == 0,
                 onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                text = { Text("In progress (${active.size})") },
+                text = { Text(stringResource(R.string.tab_in_progress, active.size)) },
             )
             Tab(
                 selected = pagerState.currentPage == 1,
                 onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                text = { Text("Completed (${done.size})") },
+                text = { Text(stringResource(R.string.tab_completed, done.size)) },
             )
         }
         HorizontalPager(
@@ -120,8 +129,16 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
             beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize(),
         ) { page ->
-            val list = if (page == 0) active else done
-            if (list.isEmpty()) {
+            val rawList = if (page == 0) active else done
+            val filteredDone = if (page == 1) {
+                val q = filterQuery.trim()
+                done.filter { item ->
+                    (filterKind == null || item.kind == filterKind) &&
+                        (q.isEmpty() || item.title.contains(q, ignoreCase = true) || item.channel.contains(q, ignoreCase = true))
+                }
+            } else rawList
+
+            if (rawList.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     if (page == 0) EmptyState(Icons.Rounded.Downloading, "Nothing downloading", "Find a video on Home or share a link to NexTube.") {
                         FilledTonalButton(onClick = onBrowse) { Text("Browse videos") }
@@ -142,7 +159,58 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
                             )
                         }
                     }
-                    items(list, key = { it.id }) { t ->
+                    if (page == 1 && done.size >= 2) {
+                        item(key = "done_filter") {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                TextField(
+                                    value = filterQuery,
+                                    onValueChange = { filterQuery = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("Search downloads…") },
+                                    leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp)) },
+                                    trailingIcon = {
+                                        if (filterQuery.isNotEmpty()) {
+                                            IconButton(onClick = { filterQuery = "" }) {
+                                                Icon(Icons.Rounded.Close, "Clear", Modifier.size(18.dp))
+                                            }
+                                        }
+                                    },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(24.dp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    ),
+                                )
+                                Row(
+                                    Modifier.padding(top = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FilterChip(
+                                        selected = filterKind == null,
+                                        onClick = { filterKind = null },
+                                        label = { Text("All") },
+                                        shape = CircleShape,
+                                    )
+                                    FilterChip(
+                                        selected = filterKind == MediaKind.VIDEO,
+                                        onClick = { filterKind = MediaKind.VIDEO },
+                                        label = { Text("Video") },
+                                        shape = CircleShape,
+                                    )
+                                    FilterChip(
+                                        selected = filterKind == MediaKind.AUDIO,
+                                        onClick = { filterKind = MediaKind.AUDIO },
+                                        label = { Text("Audio") },
+                                        shape = CircleShape,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    items(filteredDone, key = { it.id }) { t ->
                         if (page == 0) ActiveRow(
                             t,
                             onPause = { vm.pause(t) },
@@ -154,6 +222,7 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
                         else DoneRow(
                             t,
                             onPlay = { PlayerActivity.start(context, t.id) },
+                            onExtractMp3 = { vm.convertToMp3(t) },
                             onOpenExternal = { open(context, t) },
                             onShare = { share(context, t) },
                             onDelete = { toDelete = t },
@@ -226,7 +295,8 @@ private fun ActiveRow(
                         modifier = Modifier.fillMaxWidth().clip(CircleShape),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Caption("Paused · ${(t.progress * 100).toInt()}% · ${t.optionLabel}")
+                    val note = t.error ?: "Paused · ${(t.progress * 100).toInt()}%"
+                    Caption("$note · ${t.optionLabel}")
                 }
                 DownloadStatus.FAILED -> Text(
                     t.error ?: "Failed", style = MaterialTheme.typography.bodySmall,
@@ -262,6 +332,7 @@ private fun ActiveRow(
 private fun DoneRow(
     t: DownloadTask,
     onPlay: () -> Unit,
+    onExtractMp3: () -> Unit,
     onOpenExternal: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -281,6 +352,9 @@ private fun DoneRow(
             IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Play") }, leadingIcon = { Icon(Icons.Rounded.PlayArrow, null) }, onClick = { menu = false; onPlay() })
+                if (t.kind == MediaKind.VIDEO) {
+                    DropdownMenuItem(text = { Text("Extract MP3") }, leadingIcon = { Icon(Icons.Rounded.MusicNote, null) }, onClick = { menu = false; onExtractMp3() })
+                }
                 DropdownMenuItem(text = { Text("Open with…") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) }, onClick = { menu = false; onOpenExternal() })
                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(Icons.Rounded.Share, null) }, onClick = { menu = false; onShare() })
                 DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) }, onClick = { menu = false; onDelete() })

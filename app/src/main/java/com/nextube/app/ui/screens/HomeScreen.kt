@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.WifiOff
@@ -65,20 +66,25 @@ import kotlinx.coroutines.flow.filter
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nextube.app.R
 import com.nextube.app.core.EngineState
+import com.nextube.app.core.SearchSuggest
 import com.nextube.app.core.SponsorItem
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.SearchItem
+import kotlinx.coroutines.delay
 import com.nextube.app.ui.FeedState
 import com.nextube.app.ui.MainViewModel
 import com.nextube.app.ui.components.DurationBadge
@@ -97,13 +103,26 @@ fun HomeScreen(vm: MainViewModel) {
     val selected by vm.selectedCategory.collectAsStateWithLifecycle()
     val sponsor by vm.sponsor.collectAsStateWithLifecycle()
     val showSponsors by AppSettings.showSponsors.collectAsStateWithLifecycle()
+    val history by AppSettings.searchHistory.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    var searchFocused by remember { mutableStateOf(false) }
+    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     val focus = LocalFocusManager.current
     val context = LocalContext.current
     val clipboardLink = rememberClipboardLink()
     var dismissedLink by rememberSaveable { mutableStateOf<String?>(null) }
     var dismissedSponsorId by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+
+    // Debounced live YouTube search autocomplete suggestions
+    LaunchedEffect(query, searchFocused) {
+        if (!searchFocused || query.trim().length < 2 || Fmt.isUrl(query)) {
+            suggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(220)
+        suggestions = SearchSuggest.suggest(query)
+    }
 
     // Prefetch the next page smoothly when the user is within 5 items of the bottom.
     LaunchedEffect(listState) {
@@ -144,9 +163,65 @@ fun HomeScreen(vm: MainViewModel) {
                 SearchBox(
                     value = query,
                     onChange = { query = it },
+                    onFocusChange = { searchFocused = it },
                     onSubmit = { submit(query) },
                     onPaste = { clipboardLink?.let { query = it; submit(it) } },
                 )
+                val dropdownItems = if (searchFocused) {
+                    if (query.isBlank()) history.take(6).map { it to true }
+                    else suggestions.map { it to false }
+                } else emptyList()
+                AnimatedVisibility(dropdownItems.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    ) {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            dropdownItems.forEach { (text, isHistory) ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            query = text
+                                            searchFocused = false
+                                            submit(text)
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        if (isHistory) Icons.Rounded.History else Icons.Rounded.Search,
+                                        null,
+                                        Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        text,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (isHistory) {
+                                        IconButton(
+                                            onClick = { AppSettings.removeSearchHistory(text) },
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Close,
+                                                "Remove",
+                                                Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -249,12 +324,18 @@ private fun EngineChip(engine: EngineState) {
 }
 
 @Composable
-private fun SearchBox(value: String, onChange: (String) -> Unit, onSubmit: () -> Unit, onPaste: () -> Unit) {
+private fun SearchBox(
+    value: String,
+    onChange: (String) -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    onSubmit: () -> Unit,
+    onPaste: () -> Unit,
+) {
     TextField(
         value = value,
         onValueChange = onChange,
-        modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("Search or paste a video link") },
+        modifier = Modifier.fillMaxWidth().onFocusChanged { onFocusChange(it.isFocused) },
+        placeholder = { Text(stringResource(R.string.search_placeholder)) },
         leadingIcon = { Icon(Icons.Rounded.Search, null) },
         trailingIcon = {
             if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Rounded.Close, "Clear") }

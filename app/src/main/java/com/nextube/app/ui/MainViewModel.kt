@@ -3,6 +3,7 @@ package com.nextube.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nextube.app.core.AudioConverter
 import com.nextube.app.core.EngineState
 import com.nextube.app.core.Recommender
 import com.nextube.app.core.SponsorFeed
@@ -230,6 +231,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty()) return
         val url = Fmt.extractUrl(text) ?: if (Fmt.isUrl(text)) Fmt.normalizeUrl(text) else null
         if (url != null) openUrl(url) else {
+            AppSettings.addSearchHistory(text)
             _selectedCategory.value = null
             _forYouReason.value = null
             runSearch(text)
@@ -390,7 +392,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _playlistSheet.value = null
     }
 
-    fun startDownload(details: VideoDetails, option: DownloadOption) {
+    fun startDownload(
+        details: VideoDetails,
+        option: DownloadOption,
+        trimStartSec: Long? = null,
+        trimEndSec: Long? = null,
+    ) {
+        val isTrimmed = trimStartSec != null && trimEndSec != null && trimEndSec > trimStartSec &&
+            (trimStartSec > 0 || trimEndSec < details.durationSec)
+        val baseLabel = if (option.kind == MediaKind.VIDEO) "${option.label} · ${option.detail}" else option.label
+        val label = if (isTrimmed) {
+            "$baseLabel · ${Fmt.duration(trimStartSec!!).ifEmpty { "0:00" }}–${Fmt.duration(trimEndSec!!)}"
+        } else baseLabel
         val task = DownloadTask(
             id = UUID.randomUUID().toString(),
             url = details.url,
@@ -400,9 +413,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (details.id.isNotEmpty()) "https://i.ytimg.com/vi/${details.id}/hqdefault.jpg" else ""
             },
             kind = option.kind,
-            optionLabel = if (option.kind == MediaKind.VIDEO) "${option.label} · ${option.detail}" else option.label,
+            optionLabel = label,
             args = option.args,
-            sizeBytes = option.sizeBytes, // estimate for the progress bar; replaced with the real size when done
+            sizeBytes = option.sizeBytes,
+            trimStartSec = if (isTrimmed) trimStartSec else null,
+            trimEndSec = if (isTrimmed) trimEndSec else null,
         )
         DownloadRepository.add(task)
         DownloadService.enqueue(getApplication(), task.id)
@@ -462,6 +477,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val toClear = tasks.value.filter { it.status == DownloadStatus.FAILED || it.status == DownloadStatus.CANCELLED }
         toClear.forEach { DownloadService.clearWorkDir(getApplication(), it.id) }
         DownloadRepository.removeAll(toClear.map { it.id }.toSet())
+    }
+
+    /** Converts an already-downloaded video into an MP3 offline using bundled FFmpeg. */
+    fun convertToMp3(task: DownloadTask) {
+        if (task.kind != MediaKind.VIDEO || task.fileUri.isNullOrBlank()) return
+        _messages.tryEmit(UiMessage("Converting to MP3…"))
+        viewModelScope.launch {
+            runCatching { AudioConverter.videoToMp3(getApplication(), task) }
+                .onSuccess { saved ->
+                    val mp3Task = DownloadTask(
+                        id = UUID.randomUUID().toString(),
+                        url = task.url,
+                        title = task.title,
+                        channel = task.channel,
+                        thumbnail = task.thumbnail,
+                        kind = MediaKind.AUDIO,
+                        optionLabel = "MP3 · 192 kbps",
+                        args = emptyList(),
+                        status = DownloadStatus.COMPLETED,
+                        progress = 1f,
+                        fileUri = saved.uri.toString(),
+                        fileName = saved.displayName,
+                        mimeType = saved.mime,
+                        sizeBytes = saved.size,
+                    )
+                    DownloadRepository.add(mp3Task)
+                    _messages.tryEmit(UiMessage("Saved MP3: ${saved.displayName}"))
+                }
+                .onFailure { err ->
+                    _messages.tryEmit(UiMessage("MP3 conversion failed: ${err.message ?: "error"}"))
+                }
+        }
     }
 
     fun engineVersion(): String? = YtDlp.version(getApplication())

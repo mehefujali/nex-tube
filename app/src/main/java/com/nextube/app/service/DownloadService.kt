@@ -8,14 +8,19 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.nextube.app.R
+import com.nextube.app.core.AudioConverter
 import com.nextube.app.core.YtDlp
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadRepository
@@ -73,14 +78,17 @@ class DownloadService : Service() {
         }
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, Job>()
     private val limiter = Semaphore(AppSettings.maxConcurrent.value)
+    @Volatile private var lastStartId = 0
     @Volatile private var lastNotify = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         startInForeground()
         val id = intent?.getStringExtra(EXTRA_ID)
         when (intent?.action) {
@@ -90,6 +98,13 @@ class DownloadService : Service() {
         }
         stopIfIdle()
         return START_NOT_STICKY
+    }
+
+    /** Android 14/15+ dataSync foreground service timeout: pause active downloads gracefully instead of crashing. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        jobs.keys.toList().forEach { pauseTask(it) }
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun startInForeground() {
@@ -110,9 +125,23 @@ class DownloadService : Service() {
         }
     }
 
+    private fun isOnWifi(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
+        val net = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+    }
+
     private suspend fun run(id: String) {
         val task = DownloadRepository.get(id) ?: return
         if (task.status == DownloadStatus.CANCELLED || task.status == DownloadStatus.PAUSED) return
+        if (AppSettings.wifiOnly.value && !isOnWifi()) {
+            DownloadRepository.update(id) {
+                it.copy(status = DownloadStatus.PAUSED, error = "Waiting for Wi-Fi", speed = "", etaSec = -1)
+            }
+            return
+        }
         // Keep existing .part files so yt-dlp --continue resumes from where it stopped.
         val work = File(cacheDir, "dl/$id").apply { mkdirs() }
         DownloadRepository.update(id) { it.copy(status = DownloadStatus.DOWNLOADING, error = null) }
@@ -150,8 +179,19 @@ class DownloadService : Service() {
             }
             DownloadRepository.update(id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f) }
             refreshOngoing(force = true)
+            val finalFile = if (task.trimStartSec != null && task.trimEndSec != null && task.trimEndSec > task.trimStartSec) {
+                DownloadRepository.update(id, persist = false) { it.copy(note = "Trimming clip") }
+                refreshOngoing(force = true)
+                AudioConverter.trimLocalFile(
+                    context = applicationContext,
+                    src = file,
+                    startSec = task.trimStartSec,
+                    endSec = task.trimEndSec,
+                    isVideo = task.kind == MediaKind.VIDEO,
+                )
+            } else file
             DownloadRepository.update(id, persist = false) { it.copy(note = "Saving") }
-            val saved = MediaSaver.save(applicationContext, file)
+            val saved = MediaSaver.save(applicationContext, finalFile)
             DownloadRepository.update(id) {
                 it.copy(
                     status = DownloadStatus.COMPLETED, progress = 1f, speed = "", etaSec = -1,
@@ -201,9 +241,11 @@ class DownloadService : Service() {
     }
 
     private fun stopIfIdle() {
-        if (jobs.isEmpty()) {
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-            stopSelf()
+        mainHandler.post {
+            if (jobs.isEmpty()) {
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelfResult(lastStartId)
+            }
         }
     }
 

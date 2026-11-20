@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">NexTube</string>
+    <string name="share_label">NexTube से डाउनलोड करें</string>
+    <string name="nav_youtube">यूट्यूब</string>
+    <string name="nav_explore">एक्सप्लोर</string>
+    <string name="nav_downloads">डाउनलोड</string>
+    <string name="nav_settings">सेटिंग्स</string>
+    <string name="search_placeholder">खोजें या वीडियो लिंक पेस्ट करें</string>
+    <string name="tab_in_progress">प्रगति पर (%1$d)</string>
+    <string name="tab_completed">पूर्ण (%1$d)</string>
+    <string name="settings_downloads">डाउनलोड</string>
+    <string name="settings_appearance">दिखावट</string>
+    <string name="settings_engine">डाउनलोड इंजन (yt-dlp)</string>
+    <string name="settings_updates">ऐप अपडेट</string>
+    <string name="settings_about">परिचय</string>
+    <string name="save_location">सेव लोकेशन</string>
+    <string name="change">बदलें</string>
+    <string name="wifi_only">केवल Wi-Fi पर डाउनलोड</string>
+    <string name="wifi_only_desc">मोबाइल डेटा पर डाउनलोड अपने आप रुक जाएंगे</string>
+    <string name="speed_limit">डाउनलोड स्पीड लिमिट</string>
+    <string name="sponsor_block">स्पॉन्सरब्लॉक (SponsorBlock)</string>
+    <string name="sponsor_block_desc">यूट्यूब वीडियो से स्पॉन्सर और इंट्रो अपने आप हटाएं</string>
+    <string name="embed_subs">सबटाइटल जोड़ें</string>
+    <string name="embed_subs_desc">वीडियो में हिंदी, अंग्रेजी और बांग्ला सबटाइटल जोड़ें</string>
+    <string name="language">भाषा</string>
+    <string name="theme">थीम</string>
+    <string name="trim_clip">क्लिप ट्रिम करें</string>
+</resources>

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MusicNote
@@ -28,9 +29,11 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -41,15 +44,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nextube.app.R
 import com.nextube.app.data.DownloadOption
 import com.nextube.app.data.MediaKind
 import com.nextube.app.ui.MainViewModel
@@ -157,6 +163,10 @@ fun FormatSheet(state: SheetState, vm: MainViewModel) {
                         }
                     }
                     var tab by rememberSaveable { mutableIntStateOf(0) }
+                    var trimEnabled by rememberSaveable(d.url) { mutableStateOf(false) }
+                    val durF = d.durationSec.coerceAtLeast(1L).toFloat()
+                    var trimRange by remember(d.url) { mutableStateOf(0f..durF) }
+
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         listOf("Video" to Icons.Rounded.Videocam, "Audio / MP3" to Icons.Rounded.MusicNote)
                             .forEachIndexed { i, (label, icon) ->
@@ -168,10 +178,54 @@ fun FormatSheet(state: SheetState, vm: MainViewModel) {
                                 ) { Text(label) }
                             }
                     }
+
+                    if (d.durationSec > 10) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                FilterChip(
+                                    selected = trimEnabled,
+                                    onClick = { trimEnabled = !trimEnabled },
+                                    label = { Text(stringResource(R.string.trim_clip)) },
+                                    leadingIcon = { Icon(Icons.Rounded.ContentCut, null, Modifier.size(16.dp)) },
+                                )
+                                if (trimEnabled) {
+                                    Spacer(Modifier.width(10.dp))
+                                    val s = trimRange.start.toLong()
+                                    val e = trimRange.endInclusive.toLong()
+                                    Text(
+                                        "${Fmt.duration(s).ifEmpty { "0:00" }} – ${Fmt.duration(e)} (${Fmt.duration((e - s).coerceAtLeast(1))})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            }
+                            if (trimEnabled) {
+                                RangeSlider(
+                                    value = trimRange,
+                                    onValueChange = { r ->
+                                        if (r.endInclusive - r.start >= 2f) trimRange = r
+                                    },
+                                    valueRange = 0f..durF,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+
                     val options = if (tab == 0) d.videoOptions else d.audioOptions
-                    LazyColumn(Modifier.heightIn(max = if (showPreview) 260.dp else 420.dp)) {
+                    LazyColumn(Modifier.heightIn(max = if (showPreview || trimEnabled) 240.dp else 420.dp)) {
                         items(options, key = { it.label + it.detail }) { opt ->
-                            OptionRow(opt, onClick = { vm.startDownload(d, opt) })
+                            OptionRow(
+                                opt,
+                                onClick = {
+                                    if (trimEnabled) {
+                                        vm.startDownload(d, opt, trimRange.start.toLong(), trimRange.endInclusive.toLong())
+                                    } else {
+                                        vm.startDownload(d, opt)
+                                    }
+                                },
+                            )
                         }
                     }
                 }

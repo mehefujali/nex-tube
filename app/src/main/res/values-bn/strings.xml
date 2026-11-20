@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">NexTube</string>
+    <string name="share_label">NexTube দিয়ে ডাউনলোড করুন</string>
+    <string name="nav_youtube">ইউটিউব</string>
+    <string name="nav_explore">এক্সপ্লোর</string>
+    <string name="nav_downloads">ডাউনলোড</string>
+    <string name="nav_settings">সেটিংস</string>
+    <string name="search_placeholder">সার্চ করুন বা ভিডিও লিংক পেস্ট করুন</string>
+    <string name="tab_in_progress">চলমান (%1$d)</string>
+    <string name="tab_completed">সম্পন্ন (%1$d)</string>
+    <string name="settings_downloads">ডাউনলোড</string>
+    <string name="settings_appearance">অ্যাপিয়ারেন্স</string>
+    <string name="settings_engine">ডাউনলোড ইঞ্জিন (yt-dlp)</string>
+    <string name="settings_updates">অ্যাপ আপডেট</string>
+    <string name="settings_about">সম্পর্কে</string>
+    <string name="save_location">সেভ ফোল্ডার</string>
+    <string name="change">পরিবর্তন</string>
+    <string name="wifi_only">শুধু Wi-Fi-এ ডাউনলোড</string>
+    <string name="wifi_only_desc">মোবাইল ডেটায় ডাউনলোড অটো পজ থাকবে</string>
+    <string name="speed_limit">ডাউনলোড স্পিড লিমিট</string>
+    <string name="sponsor_block">স্পনসরব্লক (SponsorBlock)</string>
+    <string name="sponsor_block_desc">ইউটিউব ভিডিওর স্পনসর, ইন্ট্রো ও আউট্রো অটো কেটে বাদ দেবে</string>
+    <string name="embed_subs">সাবটাইটেল এম্বেড</string>
+    <string name="embed_subs_desc">ভিডিওতে বাংলা, ইংরেজি ও হিন্দি সাবটাইটেল যুক্ত করবে</string>
+    <string name="language">ভাষা</string>
+    <string name="theme">থিম</string>
+    <string name="trim_clip">ক্লিপ ট্রিম করুন</string>
+</resources>

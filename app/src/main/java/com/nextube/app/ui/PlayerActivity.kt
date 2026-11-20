@@ -2,13 +2,13 @@ package com.nextube.app.ui
 
 import android.app.PictureInPictureParams
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import android.view.ViewGroup
@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -102,22 +101,29 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.google.common.util.concurrent.ListenableFuture
+import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadRepository
 import com.nextube.app.data.DownloadStatus
 import com.nextube.app.data.DownloadTask
 import com.nextube.app.data.MediaKind
 import com.nextube.app.data.ThemeMode
+import com.nextube.app.service.PlaybackService
 import com.nextube.app.ui.components.Thumbnail
 import com.nextube.app.ui.theme.BrandRed
 import com.nextube.app.ui.theme.NexTubeTheme
@@ -145,37 +151,53 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private lateinit var player: ExoPlayer
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private val activePlayer = mutableStateOf<Player?>(null)
     private var queue: List<DownloadTask> = emptyList()
     private val currentIndex = mutableIntStateOf(0)
     private val inPipMode = mutableStateOf(false)
+    private var pendingTaskId: String? = null
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppSettings.wrapLocale(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        player = ExoPlayer.Builder(this).build()
-        loadFromIntent(intent)
+        pendingTaskId = intent?.getStringExtra(EXTRA_TASK_ID)
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(this, token).buildAsync().also { future ->
+            future.addListener({
+                val controller = runCatching { future.get() }.getOrNull() ?: return@addListener
+                activePlayer.value = controller
+                loadQueueAndPlay(controller, pendingTaskId)
+            }, ContextCompat.getMainExecutor(this))
+        }
 
         setContent {
             NexTubeTheme(ThemeMode.DARK) {
+                val p = activePlayer.value
                 val idx = currentIndex.intValue
                 val current = queue.getOrNull(idx)
-                if (current == null) {
-                    finish()
+                if (p == null || current == null) {
+                    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = BrandRed)
+                    }
                 } else {
                     ProPlayerScreen(
                         activity = this,
-                        player = player,
+                        player = p,
                         queue = queue,
                         currentIndex = idx,
                         inPip = inPipMode.value,
-                        onSelectTrack = { i -> playAt(i) },
-                        onNext = { if (idx + 1 < queue.size) playAt(idx + 1) },
+                        onSelectTrack = { i -> seekToTrack(p, i) },
+                        onNext = { if (idx + 1 < queue.size) seekToTrack(p, idx + 1) },
                         onPrev = {
-                            if (player.currentPosition > 3000) player.seekTo(0)
-                            else if (idx > 0) playAt(idx - 1)
+                            if (p.currentPosition > 3000) p.seekTo(0)
+                            else if (idx > 0) seekToTrack(p, idx - 1)
                         },
                         onEnterPip = { enterPip() },
                         onToggleOrientation = { toggleOrientation() },
@@ -190,30 +212,54 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        loadFromIntent(intent)
+        val id = intent.getStringExtra(EXTRA_TASK_ID)
+        pendingTaskId = id
+        val p = activePlayer.value
+        if (p != null && id != null) loadQueueAndPlay(p, id)
     }
 
-    private fun loadFromIntent(intent: Intent?) {
-        val taskId = intent?.getStringExtra(EXTRA_TASK_ID)
+    private fun loadQueueAndPlay(p: Player, taskId: String?) {
         val completed = DownloadRepository.tasks.value.filter {
             it.status == DownloadStatus.COMPLETED && !it.fileUri.isNullOrBlank()
         }
-        queue = completed
-        val idx = completed.indexOfFirst { it.id == taskId }.coerceAtLeast(0)
-        if (completed.isNotEmpty()) {
-            playAt(idx)
-        } else {
+        if (completed.isEmpty()) {
             finish()
+            return
         }
+        queue = completed
+        val idx = if (taskId != null) {
+            completed.indexOfFirst { it.id == taskId }.coerceAtLeast(0)
+        } else {
+            p.currentMediaItemIndex.coerceIn(0, completed.lastIndex)
+        }
+        val mediaItems = completed.map { t ->
+            MediaItem.Builder()
+                .setMediaId(t.id)
+                .setUri(t.fileUri!!.toUri())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(t.title)
+                        .setArtist(t.channel.ifEmpty { "NexTube" })
+                        .setArtworkUri(t.thumbnail.takeIf { it.isNotBlank() }?.toUri())
+                        .build()
+                )
+                .build()
+        }
+        val alreadyPlayingSame = taskId == null && p.mediaItemCount == mediaItems.size
+        if (!alreadyPlayingSame) {
+            p.setMediaItems(mediaItems, idx, 0L)
+            p.playWhenReady = true
+            p.prepare()
+        }
+        currentIndex.intValue = idx
+        applyImmersive(completed[idx].kind == MediaKind.VIDEO)
     }
 
-    private fun playAt(index: Int) {
+    private fun seekToTrack(p: Player, index: Int) {
         val task = queue.getOrNull(index) ?: return
-        val uri = task.fileUri ?: return
         currentIndex.intValue = index
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(uri)))
-        player.playWhenReady = true
-        player.prepare()
+        p.seekTo(index, 0L)
+        p.playWhenReady = true
         applyImmersive(task.kind == MediaKind.VIDEO)
     }
 
@@ -234,12 +280,12 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun enterPip() {
+        val p = activePlayer.value ?: return
         val task = queue.getOrNull(currentIndex.intValue) ?: return
         if (task.kind != MediaKind.VIDEO) return
-        val size = player.videoSize
+        val size = p.videoSize
         val aspect = if (size.width > 0 && size.height > 0) {
             val ratio = size.width.toFloat() / size.height.toFloat()
-            // Android PiP requires ratio between 0.418 and 2.39
             if (ratio in 0.42f..2.38f) Rational(size.width, size.height) else Rational(16, 9)
         } else Rational(16, 9)
         runCatching {
@@ -249,8 +295,9 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        val p = activePlayer.value ?: return
         val task = queue.getOrNull(currentIndex.intValue)
-        if (task?.kind == MediaKind.VIDEO && player.isPlaying) {
+        if (task?.kind == MediaKind.VIDEO && p.isPlaying) {
             enterPip()
         }
     }
@@ -262,17 +309,22 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isInPictureInPictureMode) player.pause()
+        val p = activePlayer.value ?: return
+        val task = queue.getOrNull(currentIndex.intValue)
+        // Pause videos when leaving the app (unless in PiP), but let audio/music play in the background!
+        if (!isInPictureInPictureMode && task?.kind == MediaKind.VIDEO) {
+            p.pause()
+        }
     }
 
     override fun onDestroy() {
-        player.release()
+        controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }
 
     private fun openExternal(t: DownloadTask) {
-        val uri = t.fileUri?.let(Uri::parse) ?: return
-        player.pause()
+        val uri = t.fileUri?.toUri() ?: return
+        activePlayer.value?.pause()
         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, t.mimeType ?: "*/*")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try {
@@ -283,8 +335,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun shareFile(t: DownloadTask) {
-        val uri = t.fileUri?.let(Uri::parse) ?: return
-        player.pause()
+        val uri = t.fileUri?.toUri() ?: return
+        activePlayer.value?.pause()
         val send = Intent(Intent.ACTION_SEND).setType(t.mimeType ?: "*/*")
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -299,7 +351,7 @@ private enum class RepeatSetting { OFF, ONE, ALL }
 @Composable
 private fun ProPlayerScreen(
     activity: ComponentActivity,
-    player: ExoPlayer,
+    player: Player,
     queue: List<DownloadTask>,
     currentIndex: Int,
     inPip: Boolean,
@@ -376,31 +428,29 @@ private fun ProPlayerScreen(
         }
     }
 
-    // Sync player events
+    // Sync player events (including track changes from lockscreen/Bluetooth!)
     DisposableEffect(player, currentIndex, repeatMode) {
+        player.repeatMode = when (repeatMode) {
+            RepeatSetting.ONE -> Player.REPEAT_MODE_ONE
+            RepeatSetting.ALL -> Player.REPEAT_MODE_ALL
+            RepeatSetting.OFF -> Player.REPEAT_MODE_OFF
+        }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val newIdx = player.currentMediaItemIndex
+                if (newIdx in queue.indices && newIdx != currentIndex) {
+                    onSelectTrack(newIdx)
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY && player.duration > 0) {
                     durationMs = player.duration
-                }
-                if (state == Player.STATE_ENDED) {
-                    when (repeatMode) {
-                        RepeatSetting.ONE -> {
-                            player.seekTo(0)
-                            player.play()
-                        }
-                        RepeatSetting.ALL -> {
-                            onSelectTrack((currentIndex + 1) % queue.size)
-                        }
-                        RepeatSetting.OFF -> {
-                            if (currentIndex + 1 < queue.size) onNext()
-                        }
-                    }
                 }
             }
 

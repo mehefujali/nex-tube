@@ -76,6 +76,8 @@ data class DownloadTask(
     val mimeType: String? = null,
     val sizeBytes: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),
+    val trimStartSec: Long? = null,
+    val trimEndSec: Long? = null,
     /** Short live status such as "Saving"; not persisted. */
     val note: String = "",
 ) {
@@ -85,6 +87,10 @@ data class DownloadTask(
         .put("args", JSONArray(args)).put("status", status.name).put("progress", progress.toDouble())
         .put("error", error).put("fileUri", fileUri).put("fileName", fileName)
         .put("mimeType", mimeType).put("sizeBytes", sizeBytes).put("createdAt", createdAt)
+        .apply {
+            if (trimStartSec != null) put("trimStartSec", trimStartSec)
+            if (trimEndSec != null) put("trimEndSec", trimEndSec)
+        }
 
     companion object {
         fun fromJson(o: JSONObject): DownloadTask {
@@ -106,6 +112,8 @@ data class DownloadTask(
                 mimeType = o.optString("mimeType").takeIf { it.isNotEmpty() && it != "null" },
                 sizeBytes = o.optLong("sizeBytes"),
                 createdAt = o.optLong("createdAt"),
+                trimStartSec = if (o.has("trimStartSec")) o.optLong("trimStartSec") else null,
+                trimEndSec = if (o.has("trimEndSec")) o.optLong("trimEndSec") else null,
             )
         }
     }

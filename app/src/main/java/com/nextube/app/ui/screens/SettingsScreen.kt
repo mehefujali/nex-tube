@@ -1,5 +1,6 @@
 package com.nextube.app.ui.screens
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
@@ -18,14 +19,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Update
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -47,11 +53,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nextube.app.BuildConfig
+import com.nextube.app.R
 import com.nextube.app.core.EngineState
+import com.nextube.app.data.AppLanguage
 import com.nextube.app.data.AppSettings
 import com.nextube.app.data.MediaSaver
 import com.nextube.app.data.ThemeMode
@@ -64,10 +73,16 @@ import com.nextube.app.ui.components.SupportHeroCard
 @Composable
 fun SettingsScreen(vm: MainViewModel) {
     val theme by AppSettings.theme.collectAsStateWithLifecycle()
+    val dynamicColor by AppSettings.dynamicColor.collectAsStateWithLifecycle()
+    val language by AppSettings.language.collectAsStateWithLifecycle()
     val maxConcurrent by AppSettings.maxConcurrent.collectAsStateWithLifecycle()
     val autoUpdate by AppSettings.autoUpdate.collectAsStateWithLifecycle()
     val saveFolderLabel by AppSettings.saveFolderLabel.collectAsStateWithLifecycle()
     val showSponsors by AppSettings.showSponsors.collectAsStateWithLifecycle()
+    val wifiOnly by AppSettings.wifiOnly.collectAsStateWithLifecycle()
+    val speedLimitKbps by AppSettings.speedLimitKbps.collectAsStateWithLifecycle()
+    val sponsorBlock by AppSettings.sponsorBlock.collectAsStateWithLifecycle()
+    val embedSubs by AppSettings.embedSubs.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val updating by vm.updating.collectAsStateWithLifecycle()
     val engineMessage by vm.engineMessage.collectAsStateWithLifecycle()
@@ -91,7 +106,7 @@ fun SettingsScreen(vm: MainViewModel) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Settings", fontWeight = FontWeight.Bold) })
+        TopAppBar(title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) })
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
 
             SupportHeroCard(
@@ -99,10 +114,10 @@ fun SettingsScreen(vm: MainViewModel) {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
-            Section("Downloads")
+            Section(stringResource(R.string.settings_downloads))
             ListItem(
                 modifier = Modifier.clickable { folderPicker.launch(null) },
-                headlineContent = { Text("Save location") },
+                headlineContent = { Text(stringResource(R.string.save_location)) },
                 supportingContent = {
                     Text(saveFolderLabel ?: "${Environment.DIRECTORY_DOWNLOADS}/${MediaSaver.FOLDER}")
                 },
@@ -119,7 +134,7 @@ fun SettingsScreen(vm: MainViewModel) {
                                 Icon(Icons.Rounded.RestartAlt, "Reset to default")
                             }
                         }
-                        FilledTonalButton(onClick = { folderPicker.launch(null) }) { Text("Change") }
+                        FilledTonalButton(onClick = { folderPicker.launch(null) }) { Text(stringResource(R.string.change)) }
                     }
                 },
             )
@@ -142,10 +157,64 @@ fun SettingsScreen(vm: MainViewModel) {
                 },
                 leadingContent = { Icon(Icons.Rounded.Bolt, null) },
             )
-
-            Section("Appearance")
             ListItem(
-                headlineContent = { Text("Theme") },
+                headlineContent = { Text(stringResource(R.string.wifi_only)) },
+                supportingContent = { Text(stringResource(R.string.wifi_only_desc)) },
+                leadingContent = { Icon(Icons.Rounded.Wifi, null) },
+                trailingContent = { Switch(checked = wifiOnly, onCheckedChange = AppSettings::setWifiOnly) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.speed_limit)) },
+                supportingContent = {
+                    val limits = listOf(0 to "Max", 1024 to "1M", 2048 to "2M", 5120 to "5M")
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        limits.forEachIndexed { i, (kbps, label) ->
+                            SegmentedButton(
+                                selected = speedLimitKbps == kbps,
+                                onClick = { AppSettings.setSpeedLimitKbps(kbps) },
+                                shape = SegmentedButtonDefaults.itemShape(i, limits.size),
+                            ) { Text(label) }
+                        }
+                    }
+                },
+                leadingContent = { Icon(Icons.Rounded.Speed, null) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.sponsor_block)) },
+                supportingContent = { Text(stringResource(R.string.sponsor_block_desc)) },
+                leadingContent = { Icon(Icons.Rounded.Block, null) },
+                trailingContent = { Switch(checked = sponsorBlock, onCheckedChange = AppSettings::setSponsorBlock) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.embed_subs)) },
+                supportingContent = { Text(stringResource(R.string.embed_subs_desc)) },
+                leadingContent = { Icon(Icons.Rounded.Subtitles, null) },
+                trailingContent = { Switch(checked = embedSubs, onCheckedChange = AppSettings::setEmbedSubs) },
+            )
+
+            Section(stringResource(R.string.settings_appearance))
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.language)) },
+                supportingContent = {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        AppLanguage.entries.forEachIndexed { i, lang ->
+                            SegmentedButton(
+                                selected = language == lang,
+                                onClick = {
+                                    if (language != lang) {
+                                        AppSettings.setLanguage(lang)
+                                        (context as? Activity)?.recreate()
+                                    }
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(i, AppLanguage.entries.size),
+                            ) { Text(lang.label) }
+                        }
+                    }
+                },
+                leadingContent = { Icon(Icons.Rounded.Language, null) },
+            )
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.theme)) },
                 supportingContent = {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                         ThemeMode.entries.forEachIndexed { i, m ->
@@ -159,6 +228,14 @@ fun SettingsScreen(vm: MainViewModel) {
                 },
                 leadingContent = { Icon(Icons.Rounded.Palette, null) },
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ListItem(
+                    headlineContent = { Text("Material You dynamic colors") },
+                    supportingContent = { Text("Match app colors to your phone wallpaper (Android 12+)") },
+                    leadingContent = { Icon(Icons.Rounded.Palette, null) },
+                    trailingContent = { Switch(checked = dynamicColor, onCheckedChange = AppSettings::setDynamicColor) },
+                )
+            }
             ListItem(
                 headlineContent = { Text("Show sponsor cards") },
                 supportingContent = { Text("Privacy-friendly, no tracking. Helps keep NexTube free.") },

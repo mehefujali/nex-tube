@@ -1,6 +1,7 @@
 package com.nextube.app.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -29,7 +30,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nextube.app.R
+import com.nextube.app.ui.components.MiniPlayerBar
 import com.nextube.app.ui.components.UpdateDialog
 import com.nextube.app.ui.screens.DownloadsScreen
 import com.nextube.app.ui.screens.FormatSheet
@@ -62,27 +66,30 @@ fun AppRoot(vm: MainViewModel, tab: Int, onTabChange: (Int) -> Unit) {
     }
 
     val dests = listOf(
-        Dest("YouTube", Icons.Outlined.Home, Icons.Rounded.Home),
-        Dest("Explore", Icons.Outlined.Explore, Icons.Rounded.Explore),
-        Dest("Downloads", Icons.Outlined.Download, Icons.Rounded.Download),
-        Dest("Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
+        Dest(stringResource(R.string.nav_youtube), Icons.Outlined.Home, Icons.Rounded.Home),
+        Dest(stringResource(R.string.nav_explore), Icons.Outlined.Explore, Icons.Rounded.Explore),
+        Dest(stringResource(R.string.nav_downloads), Icons.Outlined.Download, Icons.Rounded.Download),
+        Dest(stringResource(R.string.nav_settings), Icons.Outlined.Settings, Icons.Rounded.Settings),
     )
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar {
-                dests.forEachIndexed { i, d ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { onTabChange(i) },
-                        label = { Text(d.label) },
-                        icon = {
-                            BadgedBox(badge = { if (i == 2 && activeCount > 0) Badge { Text("$activeCount") } }) {
-                                Icon(if (tab == i) d.selectedIcon else d.icon, contentDescription = d.label)
-                            }
-                        },
-                    )
+            Column {
+                MiniPlayerBar()
+                NavigationBar {
+                    dests.forEachIndexed { i, d ->
+                        NavigationBarItem(
+                            selected = tab == i,
+                            onClick = { onTabChange(i) },
+                            label = { Text(d.label) },
+                            icon = {
+                                BadgedBox(badge = { if (i == 2 && activeCount > 0) Badge { Text("$activeCount") } }) {
+                                    Icon(if (tab == i) d.selectedIcon else d.icon, contentDescription = d.label)
+                                }
+                            },
+                        )
+                    }
                 }
             }
         },

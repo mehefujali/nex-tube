@@ -1,6 +1,7 @@
 package com.nextube.app.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -30,6 +31,10 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppSettings.wrapLocale(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -38,7 +43,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val theme by AppSettings.theme.collectAsStateWithLifecycle()
-            NexTubeTheme(theme) {
+            val dynamicColor by AppSettings.dynamicColor.collectAsStateWithLifecycle()
+            NexTubeTheme(theme, dynamicColor = dynamicColor) {
                 AppRoot(vm = vm, tab = tab.intValue, onTabChange = { tab.intValue = it })
             }
         }
