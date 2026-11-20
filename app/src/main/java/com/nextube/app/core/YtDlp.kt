@@ -53,6 +53,40 @@ object YtDlp {
         cacheDir?.let { addOption("--cache-dir", it.absolutePath) }
     }
 
+    private fun YoutubeDLRequest.withCookies(): YoutubeDLRequest = apply {
+        CookieStore.cookiesFile()?.let { addOption("--cookies", it.absolutePath) }
+    }
+
+    /** Resolves Instagram /share/ short links to canonical /reel/ or /p/ URLs and strips tracking params. */
+    private fun resolveUrl(raw: String): String {
+        val u = raw.trim()
+        if (!u.contains("instagram.com", ignoreCase = true)) return u
+        val resolved = if (u.contains("/share/", ignoreCase = true)) {
+            runCatching {
+                var current = u
+                repeat(4) {
+                    val conn = (java.net.URL(current).openConnection() as java.net.HttpURLConnection).apply {
+                        connectTimeout = 8_000
+                        readTimeout = 8_000
+                        instanceFollowRedirects = false
+                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
+                    }
+                    val code = conn.responseCode
+                    val loc = conn.getHeaderField("Location")
+                    conn.disconnect()
+                    if (code in 300..399 && !loc.isNullOrBlank()) {
+                        current = java.net.URL(java.net.URL(current), loc).toString()
+                    } else {
+                        return@repeat
+                    }
+                }
+                current
+            }.getOrDefault(u)
+        } else u
+        // Strip ?igsh=... tracking query params that can confuse older extractors.
+        return resolved.substringBefore('?')
+    }
+
     /** Recently fetched details, so re-opening a video is instant. */
     private val detailsCache = object : LinkedHashMap<String, Pair<Long, VideoDetails>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<Long, VideoDetails>>?) = size > 40
@@ -117,7 +151,8 @@ object YtDlp {
         }
     }
 
-    suspend fun details(url: String): VideoDetails = withContext(Dispatchers.IO) {
+    suspend fun details(rawUrl: String): VideoDetails = withContext(Dispatchers.IO) {
+        val url = resolveUrl(rawUrl)
         synchronized(detailsCache) { detailsCache[url] }?.let { (at, d) ->
             if (System.currentTimeMillis() - at < DETAILS_TTL) return@withContext d
         }
@@ -126,7 +161,7 @@ object YtDlp {
         if (updateMutex.isLocked) updateMutex.withLock { }
         val started = System.currentTimeMillis()
         fun fetch(fast: Boolean, useCache: Boolean = true) = ytdl.getInfo(
-            YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-warnings").apply {
+            YoutubeDLRequest(url).addOption("--no-playlist").addOption("--no-warnings").withCookies().apply {
                 if (useCache) withCache() else addOption("--no-cache-dir")
                 if (fast) addOption("--extractor-args", FAST_CLIENT)
             }
@@ -371,7 +406,7 @@ object YtDlp {
 
     private fun runDownload(task: DownloadTask, outDir: File, fast: Boolean, onLine: (String) -> Unit): File {
         outDir.mkdirs()
-        val req = YoutubeDLRequest(task.url)
+        val req = YoutubeDLRequest(resolveUrl(task.url))
             .addCommands(task.args)
             .addOption("--continue")
             .addOption("--no-playlist")
@@ -386,6 +421,7 @@ object YtDlp {
                     "%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(info.format_id)s",
             )
             .addOption("-o", File(outDir, "%(title).150B.%(ext)s").absolutePath)
+            .withCookies()
             .withCache()
         if (fast) req.addOption("--extractor-args", FAST_CLIENT)
         ytdl.execute(req, task.id) { _, _, line -> onLine(line) }
@@ -421,6 +457,11 @@ object YtDlp {
             ?: raw.lines().lastOrNull { it.isNotBlank() }?.trim()
             ?: "Something went wrong"
         return when {
+            line.contains("Instagram", true) && (
+                line.contains("login", true) || line.contains("cookies", true) ||
+                    line.contains("rate-limit", true) || line.contains("not granting access", true) ||
+                    line.contains("empty media", true) || line.contains("not available", true)
+                ) -> "Instagram requires sign-in for this video. Sign in to Instagram and try again."
             line.contains("Sign in to confirm", true) ->
                 "YouTube blocked this request. Update the engine in Settings and try again."
             line.contains("Private video", true) -> "This video is private."

@@ -63,7 +63,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nextube.app.core.CookieStore
 import com.nextube.app.ui.MainViewModel
+import com.nextube.app.ui.components.InstagramLoginDialog
 import com.nextube.app.ui.components.PlatformLogo
 import com.nextube.app.util.Fmt
 
@@ -95,6 +98,8 @@ fun SitesScreen(vm: MainViewModel) {
     val focus = LocalFocusManager.current
     var linkInput by rememberSaveable { mutableStateOf("") }
     var dismissedClip by rememberSaveable { mutableStateOf<String?>(null) }
+    val igConnected by CookieStore.hasInstagram.collectAsStateWithLifecycle()
+    var showIgLogin by rememberSaveable { mutableStateOf(false) }
 
     val focused = LocalWindowInfo.current.isWindowFocused
     var clipboardLink by remember { mutableStateOf<String?>(null) }
@@ -281,6 +286,43 @@ fun SitesScreen(vm: MainViewModel) {
                 shape = MaterialTheme.shapes.large,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PlatformLogo(id = "instagram", size = 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (igConnected) "Instagram connected" else "Instagram sign-in",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            if (igConnected) "Reels, Posts & Stories are unlocked (stored locally)"
+                            else "Sign in once if Instagram blocks guest downloads",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    FilledTonalButton(
+                        onClick = {
+                            if (igConnected) {
+                                CookieStore.clear()
+                                Toast.makeText(context, "Instagram signed out", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showIgLogin = true
+                            }
+                        },
+                    ) {
+                        Text(if (igConnected) "Sign out" else "Sign in")
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
@@ -301,6 +343,13 @@ fun SitesScreen(vm: MainViewModel) {
                 }
             }
         }
+    }
+
+    if (showIgLogin) {
+        InstagramLoginDialog(
+            onSuccess = { showIgLogin = false },
+            onDismiss = { showIgLogin = false },
+        )
     }
 }
 

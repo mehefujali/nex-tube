@@ -56,6 +56,7 @@ import com.nextube.app.ui.MainViewModel
 import com.nextube.app.ui.SheetState
 import com.nextube.app.ui.components.DurationBadge
 import com.nextube.app.ui.components.EmptyState
+import com.nextube.app.ui.components.InstagramLoginDialog
 import com.nextube.app.ui.components.PreviewPlayer
 import com.nextube.app.ui.components.QualityBadge
 import com.nextube.app.ui.components.Skeleton
@@ -86,11 +87,27 @@ fun FormatSheet(state: SheetState, vm: MainViewModel) {
                     }
                 }
                 is SheetState.Error -> {
+                    var showIgLogin by rememberSaveable { mutableStateOf(false) }
+                    val isIg = Fmt.platformOf(state.url).name == "Instagram"
                     if (state.preview != null) Header(
                         state.preview.title, state.preview.channel, state.preview.thumbnail, state.preview.durationSec,
                     )
                     EmptyState(Icons.Rounded.ErrorOutline, "Couldn't read this video", state.message) {
-                        FilledTonalButton(onClick = vm::retryDetails) { Text("Try again") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (isIg) {
+                                FilledTonalButton(onClick = { showIgLogin = true }) { Text("Sign in to Instagram") }
+                            }
+                            FilledTonalButton(onClick = vm::retryDetails) { Text("Try again") }
+                        }
+                    }
+                    if (showIgLogin) {
+                        InstagramLoginDialog(
+                            onSuccess = {
+                                showIgLogin = false
+                                vm.retryDetails()
+                            },
+                            onDismiss = { showIgLogin = false },
+                        )
                     }
                 }
                 is SheetState.Loaded -> {

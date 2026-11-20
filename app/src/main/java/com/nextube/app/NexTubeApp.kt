@@ -1,6 +1,7 @@
 package com.nextube.app
 
 import android.app.Application
+import com.nextube.app.core.CookieStore
 import com.nextube.app.core.EngineState
 import com.nextube.app.core.YtDlp
 import com.nextube.app.data.AppSettings
@@ -17,6 +18,7 @@ class NexTubeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppSettings.init(this)
+        CookieStore.init(this)
         DownloadRepository.init(this)
         DownloadService.createChannels(this)
 
