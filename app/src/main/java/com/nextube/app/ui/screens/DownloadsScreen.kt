@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -68,6 +69,7 @@ import com.nextube.app.data.DownloadTask
 import com.nextube.app.data.MediaKind
 import com.nextube.app.data.MediaSaver
 import com.nextube.app.ui.MainViewModel
+import com.nextube.app.ui.PlayerActivity
 import com.nextube.app.ui.components.EmptyState
 import com.nextube.app.ui.components.Thumbnail
 import com.nextube.app.util.Fmt
@@ -106,7 +108,13 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
             LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(list, key = { it.id }) { t ->
                     if (tab == 0) ActiveRow(t, onCancel = { vm.cancel(t) }, onRetry = { vm.retry(t) }, onRemove = { vm.delete(t, false) })
-                    else DoneRow(t, onOpen = { open(context, t) }, onShare = { share(context, t) }, onDelete = { toDelete = t })
+                    else DoneRow(
+                        t,
+                        onPlay = { PlayerActivity.start(context, t.id) },
+                        onOpenExternal = { open(context, t) },
+                        onShare = { share(context, t) },
+                        onDelete = { toDelete = t },
+                    )
                 }
             }
         }
@@ -175,10 +183,16 @@ private fun ActiveRow(t: DownloadTask, onCancel: () -> Unit, onRetry: () -> Unit
 }
 
 @Composable
-private fun DoneRow(t: DownloadTask, onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+private fun DoneRow(
+    t: DownloadTask,
+    onPlay: () -> Unit,
+    onOpenExternal: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onPlay).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RowThumb(t)
@@ -190,7 +204,8 @@ private fun DoneRow(t: DownloadTask, onOpen: () -> Unit, onShare: () -> Unit, on
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Play") }, leadingIcon = { Icon(Icons.Rounded.PlayArrow, null) }, onClick = { menu = false; onOpen() })
+                DropdownMenuItem(text = { Text("Play") }, leadingIcon = { Icon(Icons.Rounded.PlayArrow, null) }, onClick = { menu = false; onPlay() })
+                DropdownMenuItem(text = { Text("Open with…") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, null) }, onClick = { menu = false; onOpenExternal() })
                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(Icons.Rounded.Share, null) }, onClick = { menu = false; onShare() })
                 DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Rounded.Delete, null) }, onClick = { menu = false; onDelete() })
             }

@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-21
+
+### Added
+- Full-screen pro media player (`PlayerActivity`) with double-tap seek, brightness/volume swipe gestures, Picture-in-Picture (PiP), playback speed (`0.5x–2x`), screen lock, aspect ratio toggle, repeat modes, sleep timer, Downloads queue, and dedicated Music Player UI
+- Dedicated **Social** tab supporting 1,000+ sites (Instagram, Facebook, X/Twitter, TikTok, SoundCloud, Reddit, Vimeo, Pinterest & more) with platform badges and direct link/share handling
+- On-device personalized **For You** feed on Home based on your local download history (100% private, zero server)
+
 ## [1.0.0] - 2026-11-21
 
 ### Added

@@ -125,6 +125,7 @@ fun FormatSheet(state: SheetState, vm: MainViewModel) {
                             channel = d.channel,
                             thumbnail = d.thumbnail,
                             duration = d.durationSec,
+                            platform = Fmt.platformOf(d.url),
                             onPreview = if (d.preview != null) { { showPreview = true } } else null,
                         )
                     }
@@ -168,6 +169,7 @@ private fun Header(
     channel: String?,
     thumbnail: String,
     duration: Long,
+    platform: Fmt.PlatformInfo? = null,
     onPreview: (() -> Unit)? = null,
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -202,8 +204,29 @@ private fun Header(
                 Spacer(Modifier.height(6.dp))
                 Skeleton(Modifier.fillMaxWidth(0.6f).height(14.dp))
             }
-            if (!channel.isNullOrEmpty()) {
-                Text(channel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                if (platform != null) {
+                    Text(
+                        platform.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(platform.colorHex))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                    if (!channel.isNullOrEmpty()) Spacer(Modifier.width(6.dp))
+                }
+                if (!channel.isNullOrEmpty()) {
+                    Text(
+                        channel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (onPreview != null) {
                 Text(

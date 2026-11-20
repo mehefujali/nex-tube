@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Badge
@@ -34,6 +36,7 @@ import com.nextube.app.ui.screens.FormatSheet
 import com.nextube.app.ui.screens.HomeScreen
 import com.nextube.app.ui.screens.PlaylistSheet
 import com.nextube.app.ui.screens.SettingsScreen
+import com.nextube.app.ui.screens.SitesScreen
 
 private data class Dest(val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
 
@@ -53,13 +56,14 @@ fun AppRoot(vm: MainViewModel, tab: Int, onTabChange: (Int) -> Unit) {
                 duration = SnackbarDuration.Short,
             )
             if (res == SnackbarResult.ActionPerformed && msg.openDownloads) {
-                onTabChange(1)
+                onTabChange(2)
             }
         }
     }
 
     val dests = listOf(
-        Dest("Home", Icons.Outlined.Home, Icons.Rounded.Home),
+        Dest("YouTube", Icons.Outlined.Home, Icons.Rounded.Home),
+        Dest("Social", Icons.Outlined.Explore, Icons.Rounded.Explore),
         Dest("Downloads", Icons.Outlined.Download, Icons.Rounded.Download),
         Dest("Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
     )
@@ -74,7 +78,7 @@ fun AppRoot(vm: MainViewModel, tab: Int, onTabChange: (Int) -> Unit) {
                         onClick = { onTabChange(i) },
                         label = { Text(d.label) },
                         icon = {
-                            BadgedBox(badge = { if (i == 1 && activeCount > 0) Badge { Text("$activeCount") } }) {
+                            BadgedBox(badge = { if (i == 2 && activeCount > 0) Badge { Text("$activeCount") } }) {
                                 Icon(if (tab == i) d.selectedIcon else d.icon, contentDescription = d.label)
                             }
                         },
@@ -90,7 +94,8 @@ fun AppRoot(vm: MainViewModel, tab: Int, onTabChange: (Int) -> Unit) {
         ) {
             when (tab) {
                 0 -> HomeScreen(vm)
-                1 -> DownloadsScreen(vm, onBrowse = { onTabChange(0) })
+                1 -> SitesScreen(vm)
+                2 -> DownloadsScreen(vm, onBrowse = { onTabChange(0) })
                 else -> SettingsScreen(vm)
             }
         }

@@ -84,6 +84,7 @@ fun HomeScreen(vm: MainViewModel) {
     val feed by vm.feed.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val selected by vm.selectedCategory.collectAsStateWithLifecycle()
+    val forYouReason by vm.forYouReason.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     val focus = LocalFocusManager.current
     val clipboardLink = rememberClipboardLink()
@@ -131,7 +132,7 @@ fun HomeScreen(vm: MainViewModel) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp),
+                modifier = Modifier.padding(bottom = 6.dp),
             ) {
                 items(vm.categories) { c ->
                     FilterChip(
@@ -141,6 +142,14 @@ fun HomeScreen(vm: MainViewModel) {
                         shape = CircleShape,
                     )
                 }
+            }
+            if (selected == "For You" && !forYouReason.isNullOrEmpty()) {
+                Text(
+                    "Picked from your downloads · $forYouReason",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
             }
         }
 
@@ -210,6 +219,7 @@ private fun SearchBox(value: String, onChange: (String) -> Unit, onSubmit: () ->
 
 @Composable
 private fun ClipboardCard(link: String, onDownload: () -> Unit, onDismiss: () -> Unit) {
+    val platform = Fmt.platformOf(link)
     Card(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).padding(bottom = 8.dp),
         shape = MaterialTheme.shapes.large,
@@ -222,7 +232,7 @@ private fun ClipboardCard(link: String, onDownload: () -> Unit, onDismiss: () ->
             Icon(Icons.Rounded.Link, null, tint = Color.White)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Link copied", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("${platform.name} link copied", color = Color.White, fontWeight = FontWeight.Bold)
                 Text(
                     link, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,

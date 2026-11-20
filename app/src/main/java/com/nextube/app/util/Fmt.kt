@@ -38,12 +38,36 @@ object Fmt {
     fun isUrl(text: String): Boolean {
         val t = text.trim()
         return t.startsWith("http://", true) || t.startsWith("https://", true) ||
-            Regex("""^(www\.|m\.)?(youtube\.com|youtu\.be)/""", RegexOption.IGNORE_CASE).containsMatchIn(t)
+            Regex(
+                """^(www\.|m\.)?(youtube\.com|youtu\.be|instagram\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|tiktok\.com|vm\.tiktok\.com|soundcloud\.com|vimeo\.com|reddit\.com|dailymotion\.com|twitch\.tv|pinterest\.com|pin\.it)/""",
+                RegexOption.IGNORE_CASE,
+            ).containsMatchIn(t)
     }
 
     fun normalizeUrl(text: String): String {
         val t = text.trim()
         return if (t.startsWith("http", true)) t else "https://$t"
+    }
+
+    data class PlatformInfo(val name: String, val colorHex: Long)
+
+    /** Identifies the source platform from any URL for clean badges in the UI. */
+    fun platformOf(url: String): PlatformInfo {
+        val u = url.lowercase()
+        return when {
+            u.contains("youtube.com") || u.contains("youtu.be") -> PlatformInfo("YouTube", 0xFFFF1E2D)
+            u.contains("instagram.com") -> PlatformInfo("Instagram", 0xFFE1306C)
+            u.contains("facebook.com") || u.contains("fb.watch") -> PlatformInfo("Facebook", 0xFF1877F2)
+            u.contains("x.com") || u.contains("twitter.com") -> PlatformInfo("X", 0xFF1DA1F2)
+            u.contains("tiktok.com") -> PlatformInfo("TikTok", 0xFF00C2CB)
+            u.contains("soundcloud.com") -> PlatformInfo("SoundCloud", 0xFFFF5500)
+            u.contains("reddit.com") || u.contains("redd.it") -> PlatformInfo("Reddit", 0xFFFF4500)
+            u.contains("vimeo.com") -> PlatformInfo("Vimeo", 0xFF1AB7EA)
+            u.contains("twitch.tv") -> PlatformInfo("Twitch", 0xFF9146FF)
+            u.contains("pinterest.") || u.contains("pin.it") -> PlatformInfo("Pinterest", 0xFFE60023)
+            u.contains("dailymotion.com") -> PlatformInfo("Dailymotion", 0xFF00AAFF)
+            else -> PlatformInfo("Web", 0xFF6B7280)
+        }
     }
 
     /** True for pure playlist URLs such as `youtube.com/playlist?list=...`. */

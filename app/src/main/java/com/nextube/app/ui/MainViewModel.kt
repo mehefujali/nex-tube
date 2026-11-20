@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nextube.app.core.EngineState
+import com.nextube.app.core.Recommender
 import com.nextube.app.core.UpdateInfo
 import com.nextube.app.core.Updater
 import com.nextube.app.core.YtDlp
@@ -73,11 +74,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val tasks: StateFlow<List<DownloadTask>> = DownloadRepository.tasks
 
     val categories = listOf(
-        "Trending", "Music", "Bangla Song", "Natok", "Gaming", "News", "Cricket", "Tech", "Comedy", "Islamic", "Kids",
+        "For You", "Trending", "Music", "Bangla Song", "Natok", "Gaming", "News", "Cricket", "Tech", "Comedy", "Islamic", "Kids",
     )
 
-    private val _selectedCategory = MutableStateFlow<String?>(categories.first())
+    private val _selectedCategory = MutableStateFlow<String?>(
+        if (DownloadRepository.tasks.value.isNotEmpty()) "For You" else "Trending"
+    )
     val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
+
+    private val _forYouReason = MutableStateFlow<String?>(null)
+    val forYouReason: StateFlow<String?> = _forYouReason.asStateFlow()
 
     private val _feed = MutableStateFlow<FeedState>(FeedState.Idle)
     val feed: StateFlow<FeedState> = _feed.asStateFlow()
@@ -100,7 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: Job? = null
     private var detailsJob: Job? = null
     private var playlistJob: Job? = null
-    private var lastQuery = categories.first()
+    private var lastQuery = "trending today"
+    private var forYouSeed = 0
 
     // ---- self-update ----
 
@@ -186,7 +193,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Fill the home feed once the engine has unpacked.
         viewModelScope.launch {
             engine.first { it is EngineState.Ready }
-            if (_feed.value == FeedState.Idle) runSearch(lastQuery)
+            if (_feed.value == FeedState.Idle) {
+                if (_selectedCategory.value == "For You") runForYou()
+                else runSearch("trending today")
+            }
         }
     }
 
@@ -197,6 +207,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val url = Fmt.extractUrl(text) ?: if (Fmt.isUrl(text)) Fmt.normalizeUrl(text) else null
         if (url != null) openUrl(url) else {
             _selectedCategory.value = null
+            _forYouReason.value = null
             runSearch(text)
         }
     }
@@ -207,10 +218,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectCategory(c: String) {
         _selectedCategory.value = c
-        runSearch(if (c == "Trending") "trending today" else c)
+        if (c == "For You") {
+            forYouSeed++
+            runForYou()
+        } else {
+            _forYouReason.value = null
+            runSearch(if (c == "Trending") "trending today" else c)
+        }
     }
 
-    fun retrySearch() = runSearch(lastQuery)
+    fun retrySearch() {
+        if (_selectedCategory.value == "For You") {
+            forYouSeed++
+            runForYou()
+        } else {
+            runSearch(lastQuery)
+        }
+    }
+
+    private fun runForYou() {
+        val history = tasks.value
+        val rec = Recommender.buildQuery(history, forYouSeed)
+        if (rec == null) {
+            _forYouReason.value = null
+            runSearch("trending today")
+            return
+        }
+        _forYouReason.value = rec.reason
+        lastQuery = rec.query
+        searchJob?.cancel()
+        _feed.value = FeedState.Loading
+        searchJob = viewModelScope.launch {
+            _feed.value = runCatching { Recommender.filterFresh(YtDlp.search(rec.query), history) }
+                .fold({ FeedState.Results(it) }, { FeedState.Error(YtDlp.friendlyError(it)) })
+        }
+    }
 
     private fun runSearch(q: String) {
         lastQuery = q

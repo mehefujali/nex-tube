@@ -31,9 +31,11 @@
 
 ## ✨ Features
 
-- 🔎 **Search & browse:** search YouTube or tap a category (Trending, Music, Bangla Song, Natok, Cricket…)
-- 📋 **Smart paste:** copy a link and NexTube offers to download it as soon as you open the app
-- 📤 **Share to download:** tap *Share → NexTube* in the YouTube app or any browser
+- 🔎 **Search & browse:** search YouTube, tap a category, or browse your private on-device **For You** feed tailored from your past downloads
+- 🌐 **1,000+ sites (Social tab):** download from Instagram, Facebook, X/Twitter, TikTok, SoundCloud, Reddit, Vimeo, Pinterest, and more
+- 📋 **Smart paste:** copy a link from any supported platform and NexTube detects it immediately
+- 📤 **Share to download:** tap *Share → NexTube* in YouTube, Instagram, Facebook, X, TikTok, or any browser
+- 🎬 **Pro offline player:** full-screen video & music player with swipe brightness/volume, double-tap seek, PiP, speed (`0.5x–2x`), sleep timer, screen lock, and queue
 - 🎞️ **Every quality:** 144p up to 4K/8K MP4, with the approximate size shown before you download
 - ▶️ **In-app preview player:** preview videos inline (ad-free via Media3 ExoPlayer) before downloading
 - 📑 **Playlist downloads:** paste or share a playlist link, pick the videos and quality, and queue them all at once

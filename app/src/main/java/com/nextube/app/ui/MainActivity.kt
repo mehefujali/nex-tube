@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         if (intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)) {
-            tab.intValue = 1
+            tab.intValue = 2
             return
         }
         val url = when (intent.action) {
