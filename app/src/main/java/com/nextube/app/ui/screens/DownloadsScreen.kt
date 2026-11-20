@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nextube.app.data.AppSettings
 import com.nextube.app.data.DownloadStatus
 import com.nextube.app.data.DownloadTask
 import com.nextube.app.data.MediaKind
@@ -79,6 +80,7 @@ import com.nextube.app.util.Fmt
 @Composable
 fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
+    val saveFolderLabel by AppSettings.saveFolderLabel.collectAsStateWithLifecycle()
     val active = tasks.filter { it.status != DownloadStatus.COMPLETED }
     val done = tasks.filter { it.status == DownloadStatus.COMPLETED }
     var tab by rememberSaveable { mutableIntStateOf(if (active.any { it.status.isActive }) 0 else 1) }
@@ -103,7 +105,11 @@ fun DownloadsScreen(vm: MainViewModel, onBrowse: () -> Unit) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 if (tab == 0) EmptyState(Icons.Rounded.Downloading, "Nothing downloading", "Find a video on Home or share a link to NexTube.") {
                     FilledTonalButton(onClick = onBrowse) { Text("Browse videos") }
-                } else EmptyState(Icons.Rounded.DownloadDone, "No downloads yet", "Finished files are saved to Download/${MediaSaver.FOLDER}.")
+                } else EmptyState(
+                    Icons.Rounded.DownloadDone,
+                    "No downloads yet",
+                    "Finished files are saved to ${saveFolderLabel ?: "Download/${MediaSaver.FOLDER}"}.",
+                )
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {

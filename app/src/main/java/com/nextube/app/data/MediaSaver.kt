@@ -6,13 +6,15 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
+import androidx.core.net.toUri
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import kotlin.coroutines.resume
 
-/** Moves a finished file from app cache into the public Download/NexTube folder. */
+/** Moves a finished file from app cache into the user's chosen folder or public Download/NexTube. */
 object MediaSaver {
     const val FOLDER = "NexTube"
 
@@ -29,6 +31,14 @@ object MediaSaver {
     suspend fun save(context: Context, src: File): Saved {
         val mime = mimeOf(src)
         val size = src.length()
+
+        // 1. If the user selected a custom SAF folder, save there first (falls back to default if revoked).
+        AppSettings.saveFolderUri.value?.let { treeStr ->
+            val savedCustom = runCatching { saveToCustomTree(context, treeStr.toUri(), src, mime, size) }.getOrNull()
+            if (savedCustom != null) return savedCustom
+        }
+
+        // 2. Default public Download/NexTube folder.
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = context.contentResolver
             val values = ContentValues().apply {
@@ -62,7 +72,33 @@ object MediaSaver {
         }
     }
 
+    private fun saveToCustomTree(context: Context, treeUri: Uri, src: File, mime: String, size: Long): Saved {
+        val resolver = context.contentResolver
+        val parentDocUri = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            DocumentsContract.getTreeDocumentId(treeUri),
+        )
+        val docUri = DocumentsContract.createDocument(resolver, parentDocUri, mime, src.name)
+            ?: error("Could not create file in custom folder")
+        try {
+            resolver.openOutputStream(docUri)!!.use { out ->
+                src.inputStream().use { it.copyTo(out, 1 shl 16) }
+            }
+        } catch (t: Throwable) {
+            runCatching { DocumentsContract.deleteDocument(resolver, docUri) }
+            throw t
+        }
+        return Saved(docUri, src.name, mime, size)
+    }
+
     fun delete(context: Context, uri: String) {
-        runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
+        runCatching {
+            val u = uri.toUri()
+            when {
+                DocumentsContract.isDocumentUri(context, u) -> DocumentsContract.deleteDocument(context.contentResolver, u)
+                u.scheme == "file" -> u.path?.let { File(it).delete() }
+                else -> context.contentResolver.delete(u, null, null)
+            }
+        }
     }
 }

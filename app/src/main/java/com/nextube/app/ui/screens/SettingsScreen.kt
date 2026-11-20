@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Environment
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Update
 import androidx.compose.material3.AlertDialog
@@ -76,12 +79,28 @@ fun SettingsScreen(vm: MainViewModel) {
     val theme by AppSettings.theme.collectAsStateWithLifecycle()
     val maxConcurrent by AppSettings.maxConcurrent.collectAsStateWithLifecycle()
     val autoUpdate by AppSettings.autoUpdate.collectAsStateWithLifecycle()
+    val saveFolderLabel by AppSettings.saveFolderLabel.collectAsStateWithLifecycle()
     val engine by vm.engine.collectAsStateWithLifecycle()
     val updating by vm.updating.collectAsStateWithLifecycle()
     val engineMessage by vm.engineMessage.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     val version = remember(engine, updating) { if (engine == EngineState.Ready) vm.engineVersion() else null }
     var showSupport by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            val label = AppSettings.friendlyTreeLabel(uri)
+            AppSettings.setSaveFolder(uri.toString(), label)
+            Toast.makeText(context, "Save folder set to $label", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Settings", fontWeight = FontWeight.Bold) })
@@ -89,9 +108,27 @@ fun SettingsScreen(vm: MainViewModel) {
 
             Section("Downloads")
             ListItem(
+                modifier = Modifier.clickable { folderPicker.launch(null) },
                 headlineContent = { Text("Save location") },
-                supportingContent = { Text("${Environment.DIRECTORY_DOWNLOADS}/${MediaSaver.FOLDER}") },
+                supportingContent = {
+                    Text(saveFolderLabel ?: "${Environment.DIRECTORY_DOWNLOADS}/${MediaSaver.FOLDER}")
+                },
                 leadingContent = { Icon(Icons.Rounded.Folder, null) },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (saveFolderLabel != null) {
+                            IconButton(
+                                onClick = {
+                                    AppSettings.setSaveFolder(null, null)
+                                    Toast.makeText(context, "Reset to default folder", Toast.LENGTH_SHORT).show()
+                                },
+                            ) {
+                                Icon(Icons.Rounded.RestartAlt, "Reset to default")
+                            }
+                        }
+                        FilledTonalButton(onClick = { folderPicker.launch(null) }) { Text("Change") }
+                    }
+                },
             )
             ListItem(
                 headlineContent = { Text("Downloads at the same time") },
