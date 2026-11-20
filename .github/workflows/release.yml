@@ -1,0 +1,118 @@
+name: Release
+
+# Run from GitHub → Actions → Release → "Run workflow".
+# Builds signed APKs, publishes a GitHub Release, then updates update.json on main
+# so every installed copy of NexTube shows the update popup.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 1.2.0"
+        required: true
+      mandatory:
+        description: "Force update: older versions are blocked until they update"
+        type: boolean
+        default: false
+      changelog:
+        description: "What's new (shown in the update popup)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Work out version code
+        id: v
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Version must look like 1.2.0"; exit 1
+          fi
+          CODE=$(( 10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+          CURRENT=$(jq .versionCode update.json)
+          if [ "$CODE" -le "$CURRENT" ]; then
+            echo "::error::Version $VERSION ($CODE) must be higher than the current release ($CURRENT)"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NEXTUBE_KEYSTORE_BASE64 }}
+        run: |
+          # Updates only install when every release is signed with the same key.
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Add the NEXTUBE_KEYSTORE_* secrets first (see CONTRIBUTING.md)"; exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > release.jks
+          echo "NEXTUBE_KEYSTORE_FILE=release.jks" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APKs
+        env:
+          NEXTUBE_KEYSTORE_PASSWORD: ${{ secrets.NEXTUBE_KEYSTORE_PASSWORD }}
+          NEXTUBE_KEY_ALIAS: ${{ secrets.NEXTUBE_KEY_ALIAS }}
+          NEXTUBE_KEY_PASSWORD: ${{ secrets.NEXTUBE_KEY_PASSWORD }}
+        run: >
+          ./gradlew assembleRelease --stacktrace
+          -PversionCode=${{ steps.v.outputs.code }}
+          -PversionName=${{ steps.v.outputs.version }}
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: NexTube ${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          body: ${{ inputs.changelog }}
+          files: app/build/outputs/apk/release/*.apk
+
+      - name: Point update.json at the new release
+        env:
+          CHANGELOG: ${{ inputs.changelog }}
+          MANDATORY: ${{ inputs.mandatory }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          CODE="${{ steps.v.outputs.code }}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/v$V"
+          MIN=$(jq .minVersionCode update.json)
+          if [ "$MANDATORY" = "true" ]; then MIN=$CODE; fi
+          jq -n --argjson code "$CODE" --arg name "$V" --argjson min "$MIN" --arg log "$CHANGELOG" --arg base "$BASE" '{
+            versionCode: $code,
+            versionName: $name,
+            minVersionCode: $min,
+            changelog: $log,
+            apk: {
+              "arm64-v8a":   "\($base)/app-arm64-v8a-release.apk",
+              "armeabi-v7a": "\($base)/app-armeabi-v7a-release.apk",
+              "x86_64":      "\($base)/app-x86_64-release.apk",
+              "x86":         "\($base)/app-x86-release.apk",
+              "universal":   "\($base)/app-universal-release.apk"
+            }
+          }' > update.json
+          cat update.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          git commit -m "Release $V"
+          git pull --rebase origin main
+          git push origin HEAD:main
