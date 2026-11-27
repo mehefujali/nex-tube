@@ -1,9 +1,6 @@
 package com.nextube.app.ui.components
 
 import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -18,11 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -33,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.nextube.app.ui.theme.BrandGradient
 
-const val SUPPORT_UPI_ID = "nextube@ybl"
+const val SUPPORT_RAZORPAY_URL = "https://razorpay.me/@prakritighor"
 const val SUPPORT_SPONSORS_URL = "https://github.com/sponsors/mehefujali"
 
 /** Highlighted brand-gradient Support card used at the top of Settings and bottom of Explore. */
@@ -147,29 +141,13 @@ fun SupportSlimBanner(
     }
 }
 
-/** Shared Support / Donate dialog with UPI (India) and GitHub Sponsors (Global). */
+/** Shared Support / Donate dialog with Razorpay (UPI/Cards) and GitHub Sponsors (Global). */
 @Composable
 fun SupportDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    fun copyUpi() {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("NexTube UPI ID", SUPPORT_UPI_ID))
-        Toast.makeText(context, "UPI ID copied: $SUPPORT_UPI_ID", Toast.LENGTH_SHORT).show()
-    }
-    fun payWithUpi() {
-        val uri = "upi://pay?pa=$SUPPORT_UPI_ID&pn=NexTube&tn=Support%20NexTube&cu=INR".toUri()
+    fun openUrl(url: String) {
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: ActivityNotFoundException) {
-            copyUpi()
-            Toast.makeText(context, "No UPI app found — UPI ID copied", Toast.LENGTH_SHORT).show()
-        }
-    }
-    fun openSponsors() {
-        try {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, SUPPORT_SPONSORS_URL.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(context, "No browser found", Toast.LENGTH_SHORT).show()
         }
@@ -182,40 +160,21 @@ fun SupportDialog(onDismiss: () -> Unit) {
         text = {
             Column {
                 Text(
-                    "NexTube is 100% free, open-source, and has no ads or tracking. If you find it useful, you can support its development:",
+                    "NexTube is 100% free, open-source, and has no pop-up ads or tracking. If you find it useful, you can support its development:",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Spacer(Modifier.height(14.dp))
-                Text("UPI (India)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(16.dp))
+                Text("UPI / Cards (India)", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            SUPPORT_UPI_ID,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = ::copyUpi) {
-                            Icon(Icons.Rounded.ContentCopy, "Copy UPI ID", Modifier.size(18.dp))
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = ::payWithUpi, modifier = Modifier.fillMaxWidth()) {
-                    Text("Pay with UPI app")
+                Button(onClick = { openUrl(SUPPORT_RAZORPAY_URL) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Donate via Razorpay (UPI / Card)")
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("Global", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(onClick = ::openSponsors, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { openUrl(SUPPORT_SPONSORS_URL) }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("GitHub Sponsors")

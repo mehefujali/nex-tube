@@ -100,8 +100,8 @@ app/src/main/java/com/nextube/app/
 
 NexTube is 100% free, open-source, and has no ads or tracking. If you find it useful, consider supporting development:
 
+- **UPI / Cards (India):** [razorpay.me/@prakritighor](https://razorpay.me/@prakritighor)
 - **GitHub Sponsors (Global):** [github.com/sponsors/mehefujali](https://github.com/sponsors/mehefujali)
-- **UPI (India):** `nextube@ybl`
 
 ## 🤝 Contributing
 
